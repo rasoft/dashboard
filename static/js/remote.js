@@ -17,13 +17,20 @@ window.RemotePanel = (() => {
     AudioVolumeDown: "VOLUME_DOWN",
     VolumeUp: "VOLUME_UP",
     VolumeDown: "VOLUME_DOWN",
-    // Reliable fallbacks for volume on normal keyboards
     PageUp: "VOLUME_UP",
     PageDown: "VOLUME_DOWN",
-    "=": "VOLUME_UP",
+    // Volume: + / - (main and numpad)
     "+": "VOLUME_UP",
+    "=": "VOLUME_UP", // same physical key as + without Shift
     "-": "VOLUME_DOWN",
     "_": "VOLUME_DOWN",
+  };
+
+  const CODE_MAP = {
+    NumpadAdd: "VOLUME_UP",
+    NumpadSubtract: "VOLUME_DOWN",
+    Equal: "VOLUME_UP",
+    Minus: "VOLUME_DOWN",
   };
 
   function isTypingTarget(el) {
@@ -65,7 +72,7 @@ window.RemotePanel = (() => {
     if (e.altKey || e.ctrlKey || e.metaKey) return;
     if (isTypingTarget(e.target)) return;
 
-    const mapped = KEYBOARD_MAP[e.key];
+    const mapped = KEYBOARD_MAP[e.key] || CODE_MAP[e.code];
     if (!mapped) return;
 
     e.preventDefault();
