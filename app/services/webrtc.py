@@ -176,7 +176,9 @@ class WebRTCManager:
         self._audio_player: Optional[MediaPlayer] = None
         self._relay: Optional[MediaRelay] = None
         self._active_sid: Optional[str] = None
+        self._reserving_sid: Optional[str] = None
         self._pending_ice: list[dict[str, Any]] = []
+        self._early_ice: dict[str, list[dict[str, Any]]] = {}
         self._remote_ready = False
         self._lock = threading.Lock()
         self._emit: Optional[Callable[..., Any]] = None
@@ -211,7 +213,10 @@ class WebRTCManager:
         return self._active_sid
 
     def is_busy(self, sid: str) -> bool:
-        return self._active_sid is not None and self._active_sid != sid
+        with self._lock:
+            if self._reserving_sid and self._reserving_sid != sid:
+                return True
+            return self._active_sid is not None and self._active_sid != sid
 
     def handle_offer(
         self,
@@ -225,32 +230,56 @@ class WebRTCManager:
         audio: bool,
         audio_device: Optional[str],
     ) -> dict[str, Any]:
+        if not video_device or not os.path.exists(video_device):
+            return {"ok": False, "error": f"video device missing: {video_device}"}
+
         with self._lock:
             if self._active_sid and self._active_sid != sid:
                 return {"ok": False, "error": "another HDMI session is already active"}
-            if not video_device or not os.path.exists(video_device):
-                return {"ok": False, "error": f"video device missing: {video_device}"}
+            if self._reserving_sid and self._reserving_sid != sid:
+                return {"ok": False, "error": "another HDMI session is already active"}
+            # Reserve sid so early ICE from this client is queued, not rejected.
+            self._reserving_sid = sid
             self.start_loop()
+
+        try:
             return self._submit(
                 self._create_answer(
                     sid, sdp, type_, video_device, width, height, fps, audio, audio_device
                 )
             )
+        finally:
+            with self._lock:
+                if self._reserving_sid == sid:
+                    self._reserving_sid = None
 
     def add_ice(self, sid: str, candidate: dict[str, Any]) -> dict[str, Any]:
+        """Accept ICE even before answer is ready; queue until remote description is set."""
         with self._lock:
+            owned = self._active_sid == sid or self._reserving_sid == sid
+            if not owned:
+                # Offer may still be in flight on the wire — queue by sid.
+                self._early_ice.setdefault(sid, []).append(candidate)
+                logger.info("queued early ICE for sid=%s (no session yet)", sid)
+                return {"ok": True, "queued": True}
             if self._active_sid != sid:
-                return {"ok": False, "error": "no active session for this client"}
+                # Reserved but PeerConnection not created yet.
+                self._early_ice.setdefault(sid, []).append(candidate)
+                return {"ok": True, "queued": True}
         return self._submit(self._add_ice(candidate))
 
     def stop(self, sid: Optional[str] = None) -> dict[str, Any]:
         with self._lock:
             if sid and self._active_sid and sid != self._active_sid:
+                self._early_ice.pop(sid, None)
                 return {"ok": False, "error": "session mismatch"}
+            if sid:
+                self._early_ice.pop(sid, None)
             if not self._loop:
                 self._active_sid = None
+                self._reserving_sid = None
                 return {"ok": True}
-            return self._submit(self._close())
+        return self._submit(self._close(clear_sid=sid))
 
     async def _create_answer(
         self,
@@ -264,12 +293,14 @@ class WebRTCManager:
         audio: bool,
         audio_device: Optional[str],
     ) -> dict[str, Any]:
-        await self._close()
+        # Preserve ICE that arrived before/during offer processing.
+        early = self._early_ice.pop(sid, [])
+        await self._close(clear_sid=None)
 
         pc = RTCPeerConnection()
         self._pc = pc
         self._active_sid = sid
-        self._pending_ice = []
+        self._pending_ice = list(early)
         self._remote_ready = False
 
         @pc.on("connectionstatechange")
@@ -282,7 +313,7 @@ class WebRTCManager:
                 except Exception:  # noqa: BLE001
                     pass
             if state in ("failed", "closed"):
-                await self._close()
+                await self._close(clear_sid=sid)
 
         try:
             video_track = FFmpegV4L2Track(video_device, width, height, fps)
@@ -302,7 +333,9 @@ class WebRTCManager:
             await pc.setRemoteDescription(offer)
             self._remote_ready = True
 
-            pending = list(self._pending_ice)
+            # Flush any ICE queued before remote description was ready.
+            more_early = self._early_ice.pop(sid, [])
+            pending = list(self._pending_ice) + more_early
             self._pending_ice.clear()
             for cand in pending:
                 await self._add_ice(cand)
@@ -322,12 +355,12 @@ class WebRTCManager:
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("failed to create WebRTC answer")
-            await self._close()
+            await self._close(clear_sid=sid)
             return {"ok": False, "error": str(exc)}
 
     async def _add_ice(self, candidate: dict[str, Any]) -> dict[str, Any]:
         if not self._pc:
-            return {"ok": False, "error": "no peer connection"}
+            return {"ok": True, "queued": True}
         try:
             cand_str = candidate.get("candidate") or ""
             if not cand_str:
@@ -344,11 +377,14 @@ class WebRTCManager:
             return {"ok": True}
         except Exception as exc:  # noqa: BLE001
             logger.warning("addIceCandidate failed: %s", exc)
-            return {"ok": False, "error": str(exc)}
+            # Non-fatal: bad candidates should not tear down the session.
+            return {"ok": True, "warning": str(exc)}
 
-    async def _close(self) -> dict[str, Any]:
+    async def _close(self, clear_sid: Optional[str] = None) -> dict[str, Any]:
         self._remote_ready = False
         self._pending_ice.clear()
+        if clear_sid:
+            self._early_ice.pop(clear_sid, None)
 
         if self._video_track is not None:
             try:

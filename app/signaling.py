@@ -90,8 +90,10 @@ def on_hdmi_offer(data):
 def on_hdmi_ice(data):
     data = data or {}
     result = webrtc_manager.add_ice(request.sid, data)
+    # ICE failures/queueing must not tear down the client session.
     if not result.get("ok"):
-        emit("hdmi:error", {"error": result.get("error", "ice failed")})
+        logger.warning("hdmi ice rejected: %s", result)
+        emit("hdmi:ice-nack", {"error": result.get("error", "ice failed")})
 
 
 @socketio.on("hdmi:stop")

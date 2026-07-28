@@ -4,7 +4,9 @@ window.HdmiPanel = (() => {
   let starting = false;
   let root = null;
   let pendingRemoteIce = [];
+  let pendingLocalIce = [];
   let remoteDescriptionSet = false;
+  let offerSent = false;
 
   function els() {
     return {
@@ -81,6 +83,14 @@ window.HdmiPanel = (() => {
     });
   }
 
+  function flushLocalIce(sock) {
+    if (!offerSent) return;
+    for (const msg of pendingLocalIce) {
+      sock.emit("hdmi:ice", msg);
+    }
+    pendingLocalIce = [];
+  }
+
   async function applyRemoteIce(msg) {
     if (!pc || !msg?.candidate) return;
     const candidate = new RTCIceCandidate({
@@ -130,6 +140,9 @@ window.HdmiPanel = (() => {
     socket.on("hdmi:ice", (msg) => {
       applyRemoteIce(msg);
     });
+    socket.on("hdmi:ice-nack", (msg) => {
+      console.warn("ICE nack", msg);
+    });
     socket.on("hdmi:state", (msg) => {
       const state = msg.state || "unknown";
       setStatus(`连接状态：${state}`);
@@ -137,7 +150,6 @@ window.HdmiPanel = (() => {
         setOverlay("", false);
         setButtons({ running: true });
       }
-      // Do not tear down on transient "disconnected"; only failed/closed.
       if (state === "failed" || state === "closed") {
         cleanupPc();
         setButtons({ running: false });
@@ -156,7 +168,9 @@ window.HdmiPanel = (() => {
 
   function cleanupPc() {
     remoteDescriptionSet = false;
+    offerSent = false;
     pendingRemoteIce = [];
+    pendingLocalIce = [];
     if (pc) {
       try {
         pc.ontrack = null;
@@ -206,7 +220,6 @@ window.HdmiPanel = (() => {
     }
 
     pc = new RTCPeerConnection({
-      // LAN host candidates are primary; STUN is a fallback.
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
 
@@ -233,14 +246,19 @@ window.HdmiPanel = (() => {
       }
     };
 
+    // Buffer local ICE until offer is sent, so the server always has a session/reservation.
     pc.onicecandidate = (ev) => {
-      if (ev.candidate) {
-        sock.emit("hdmi:ice", {
-          candidate: ev.candidate.candidate,
-          sdpMid: ev.candidate.sdpMid,
-          sdpMLineIndex: ev.candidate.sdpMLineIndex,
-        });
+      if (!ev.candidate) return;
+      const msg = {
+        candidate: ev.candidate.candidate,
+        sdpMid: ev.candidate.sdpMid,
+        sdpMLineIndex: ev.candidate.sdpMLineIndex,
+      };
+      if (!offerSent) {
+        pendingLocalIce.push(msg);
+        return;
       }
+      sock.emit("hdmi:ice", msg);
     };
 
     pc.onconnectionstatechange = () => {
@@ -264,6 +282,8 @@ window.HdmiPanel = (() => {
         fps: 30,
         audio: enableAudio,
       });
+      offerSent = true;
+      flushLocalIce(sock);
       setStatus("已发送 Offer，等待 Answer…");
     } catch (err) {
       setStatus(`启动失败：${err}`);
