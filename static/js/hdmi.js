@@ -16,8 +16,7 @@ window.HdmiPanel = (() => {
     return {
       resolution: root.querySelector("#hdmi-resolution"),
       audio: root.querySelector("#hdmi-audio"),
-      start: root.querySelector("#hdmi-start"),
-      stop: root.querySelector("#hdmi-stop"),
+      toggle: root.querySelector("#hdmi-toggle"),
       unmute: root.querySelector("#hdmi-unmute"),
       bandwidth: root.querySelector("#hdmi-bandwidth"),
       video: root.querySelector("#hdmi-video"),
@@ -39,9 +38,23 @@ window.HdmiPanel = (() => {
   }
 
   function setButtons({ running }) {
-    const { start, stop } = els();
-    if (start) start.disabled = running;
-    if (stop) stop.disabled = !running;
+    const { toggle } = els();
+    if (!toggle) return;
+    toggle.dataset.running = running ? "1" : "0";
+    toggle.textContent = running ? "停止" : "开始";
+    toggle.classList.toggle("btn-ghost", !!running);
+    toggle.disabled = false;
+  }
+
+  async function onToggleClick() {
+    const { toggle } = els();
+    if (!toggle) return;
+    if (toggle.dataset.running === "1") {
+      await stop();
+      return;
+    }
+    if (starting) return;
+    await start();
   }
 
   function setBandwidthText(text) {
@@ -534,6 +547,7 @@ window.HdmiPanel = (() => {
   }
 
   async function stop() {
+    starting = false;
     const sock = ensureSocket();
     if (sock.connected) sock.emit("hdmi:stop", {});
     cleanupPc();
@@ -548,15 +562,14 @@ window.HdmiPanel = (() => {
     if (!root || root.dataset.bound === "1") return;
     root.dataset.bound = "1";
 
-    const { resolution, audio, start: startBtn, stop: stopBtn, unmute } = els();
+    const { resolution, audio, toggle, unmute } = els();
     resolution.addEventListener("change", () => {
       if (!pc) refreshEstimateBandwidth();
     });
     audio.addEventListener("change", () => {
       if (!pc) refreshEstimateBandwidth();
     });
-    startBtn.addEventListener("click", () => start());
-    stopBtn.addEventListener("click", () => stop());
+    toggle.addEventListener("click", () => onToggleClick());
     if (unmute) {
       unmute.addEventListener("click", () => {
         tryUnmute(false).then((ok) => {

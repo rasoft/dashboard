@@ -33,7 +33,7 @@
         <button type="button" class="btn" id="btn-add-panel">添加面板</button>
         <div class="menu" id="add-panel-menu" hidden>
           <button type="button" data-panel="remote">遥控器</button>
-          <button type="button" data-panel="hdmi">HDMI 输出监测</button>
+          <button type="button" data-panel="hdmi">屏幕</button>
           <button type="button" data-panel="ddr">内存带宽</button>
           <button type="button" data-panel="hwc">Sf-HWC层</button>
           <button type="button" data-panel="sf-events">Sf-事件</button>
@@ -119,8 +119,7 @@
           <input type="checkbox" id="hdmi-audio" checked />
           音频
         </label>
-        <button type="button" class="btn" id="hdmi-start">开始监测</button>
-        <button type="button" class="btn btn-ghost" id="hdmi-stop" disabled>停止</button>
+        <button type="button" class="btn" id="hdmi-toggle" data-running="0">开始</button>
         <button type="button" class="btn btn-ghost" id="hdmi-unmute" hidden>取消静音</button>
       </div>
       <div class="hdmi-bandwidth" id="hdmi-bandwidth">网络带宽加载中…</div>

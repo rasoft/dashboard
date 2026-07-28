@@ -14,7 +14,7 @@ const PANEL_DEFS = {
   },
   hdmi: {
     id: "hdmi",
-    title: "HDMI 输出监测",
+    title: "屏幕",
     w: 9,
     h: 14,
     minW: 5,
