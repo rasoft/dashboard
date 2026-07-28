@@ -46,7 +46,8 @@ body {
   backdrop-filter: blur(8px);
   position: sticky;
   top: 0;
-  z-index: 20;
+  /* Above GridStack panels (their z-index grows on click/drag). */
+  z-index: 10000;
 }
 
 .brand {
@@ -136,7 +137,7 @@ body {
   padding: 0.35rem;
   display: grid;
   gap: 0.25rem;
-  z-index: 30;
+  z-index: 1;
 }
 
 .menu[hidden] {
