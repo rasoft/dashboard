@@ -310,25 +310,38 @@ body {
   overflow: hidden;
 }
 
-.remote-photo-wrap {
-  position: relative;
+/* Scale box: hotspots are % of wrap; wrap must match image aspect exactly. */
+.remote-scale {
   flex: 1 1 auto;
   min-height: 0;
-  height: 100%;
-  width: fit-content;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+  overflow: hidden;
+}
+
+.remote-photo-wrap {
+  position: relative;
+  /* Fit panel while locking 262×950 aspect so % hotspots stay on buttons. */
+  width: min(100cqw, calc(100cqh * 262 / 950));
+  aspect-ratio: 262 / 950;
+  height: auto;
   max-width: 100%;
-  margin: 0 auto;
+  max-height: 100%;
   line-height: 0;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .remote-photo {
+  width: 100%;
   height: 100%;
-  width: auto;
-  max-width: 100%;
   display: block;
   pointer-events: none;
   border-radius: 8px;
+  object-fit: fill;
 }
 
 .hotspot {
@@ -344,6 +357,10 @@ body {
 
 .hotspot.round {
   border-radius: 50%;
+}
+
+.hotspot[data-key="DPAD_CENTER"] {
+  z-index: 3;
 }
 
 .hotspot.pad,

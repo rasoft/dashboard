@@ -60,41 +60,45 @@
 
   <template id="tpl-remote">
     <div class="remote">
-      <div class="remote-photo-wrap" aria-label="Android TV 遥控器">
-        <img
-          class="remote-photo"
-          src="/static/img/remote.png"
-          alt="遥控器"
-          draggable="false"
-        />
-        <!-- Hotspots mapped to physical remote buttons (percent of image) -->
-        <button type="button" class="hotspot round" data-key="POWER" title="电源" style="left:10%;top:2.8%;width:18%;height:5%;"></button>
-        <button type="button" class="hotspot round" data-key="TV_INPUT" title="输入源" style="left:72%;top:2.8%;width:18%;height:5%;"></button>
+      <div class="remote-scale">
+        <div class="remote-photo-wrap" aria-label="Android TV 遥控器">
+          <img
+            class="remote-photo"
+            src="/static/img/remote.png"
+            alt="遥控器"
+            width="262"
+            height="950"
+            draggable="false"
+          />
+          <!-- Hotspots: percent of image box (same aspect as remote.png 262×950) -->
+          <button type="button" class="hotspot round" data-key="POWER" title="电源" style="left:12%;top:3.3%;width:16%;height:4.8%;"></button>
+          <button type="button" class="hotspot round" data-key="TV_INPUT" title="输入源" style="left:72%;top:3.3%;width:16%;height:4.8%;"></button>
 
-        <button type="button" class="hotspot round" data-key="BOOKMARK" title="列表" style="left:10%;top:10.5%;width:18%;height:5%;"></button>
-        <button type="button" class="hotspot round" data-key="ASSISTANT" title="Google 助手" style="left:34%;top:9.5%;width:32%;height:7.5%;"></button>
-        <button type="button" class="hotspot round" data-key="SETTINGS" title="设置" style="left:72%;top:10.5%;width:18%;height:5%;"></button>
+          <button type="button" class="hotspot round" data-key="BOOKMARK" title="列表" style="left:11%;top:13.5%;width:22%;aspect-ratio:1;height:auto;"></button>
+          <button type="button" class="hotspot round" data-key="ASSISTANT" title="Google 助手" style="left:36.5%;top:10.6%;width:27%;height:7%;"></button>
+          <button type="button" class="hotspot round" data-key="SETTINGS" title="设置" style="left:67%;top:13.5%;width:22%;aspect-ratio:1;height:auto;"></button>
 
-        <button type="button" class="hotspot pad" data-key="DPAD_UP" title="上" style="left:36%;top:20.5%;width:28%;height:6%;"></button>
-        <button type="button" class="hotspot pad" data-key="DPAD_LEFT" title="左" style="left:18%;top:26.5%;width:18%;height:7.5%;"></button>
-        <button type="button" class="hotspot round" data-key="DPAD_CENTER" title="确认" style="left:36%;top:26.5%;width:28%;height:7.5%;"></button>
-        <button type="button" class="hotspot pad" data-key="DPAD_RIGHT" title="右" style="left:64%;top:26.5%;width:18%;height:7.5%;"></button>
-        <button type="button" class="hotspot pad" data-key="DPAD_DOWN" title="下" style="left:36%;top:34%;width:28%;height:6%;"></button>
+          <button type="button" class="hotspot pad" data-key="DPAD_UP" title="上" style="left:34%;top:18.7%;width:31%;height:6%;"></button>
+          <button type="button" class="hotspot pad" data-key="DPAD_LEFT" title="左" style="left:15%;top:24.6%;width:20%;height:9.3%;"></button>
+          <button type="button" class="hotspot round" data-key="DPAD_CENTER" title="确认" style="left:37%;top:25.4%;width:25%;height:7.6%;"></button>
+          <button type="button" class="hotspot pad" data-key="DPAD_RIGHT" title="右" style="left:65%;top:24.6%;width:20%;height:9.3%;"></button>
+          <button type="button" class="hotspot pad" data-key="DPAD_DOWN" title="下" style="left:34%;top:33.8%;width:31%;height:6%;"></button>
 
-        <button type="button" class="hotspot round" data-key="BACK" title="返回" style="left:10%;top:42%;width:20%;height:5.2%;"></button>
-        <button type="button" class="hotspot round" data-key="HOME" title="主页" style="left:40%;top:42%;width:20%;height:5.2%;"></button>
-        <button type="button" class="hotspot round" data-key="LIVE" title="直播" style="left:70%;top:42%;width:20%;height:5.2%;"></button>
+          <button type="button" class="hotspot round" data-key="BACK" title="返回" style="left:12.5%;top:39.2%;width:20%;height:5.8%;"></button>
+          <button type="button" class="hotspot round" data-key="HOME" title="主页" style="left:38%;top:41%;width:24%;height:6.5%;"></button>
+          <button type="button" class="hotspot round" data-key="LIVE" title="直播" style="left:67.5%;top:39.2%;width:20%;height:5.8%;"></button>
 
-        <button type="button" class="hotspot rocker" data-key="VOLUME_UP" title="音量+" style="left:10%;top:50%;width:20%;height:4.5%;"></button>
-        <button type="button" class="hotspot rocker" data-key="VOLUME_DOWN" title="音量-" style="left:10%;top:56.8%;width:20%;height:4.5%;"></button>
-        <button type="button" class="hotspot round" data-key="MUTE" title="静音" style="left:40%;top:52.8%;width:20%;height:5.2%;"></button>
-        <button type="button" class="hotspot rocker" data-key="CHANNEL_UP" title="频道+" style="left:70%;top:50%;width:20%;height:4.5%;"></button>
-        <button type="button" class="hotspot rocker" data-key="CHANNEL_DOWN" title="频道-" style="left:70%;top:56.8%;width:20%;height:4.5%;"></button>
+          <button type="button" class="hotspot rocker" data-key="VOLUME_UP" title="音量+" style="left:10%;top:48.8%;width:24%;height:7.2%;"></button>
+          <button type="button" class="hotspot rocker" data-key="VOLUME_DOWN" title="音量-" style="left:10%;top:56%;width:24%;height:7.2%;"></button>
+          <button type="button" class="hotspot round" data-key="MUTE" title="静音" style="left:38%;top:53.6%;width:24%;height:7%;"></button>
+          <button type="button" class="hotspot rocker" data-key="CHANNEL_UP" title="频道+" style="left:66%;top:48.8%;width:24%;height:7.2%;"></button>
+          <button type="button" class="hotspot rocker" data-key="CHANNEL_DOWN" title="频道-" style="left:66%;top:56%;width:24%;height:7.2%;"></button>
 
-        <button type="button" class="hotspot app" data-key="YOUTUBE" title="YouTube" style="left:8%;top:65.8%;width:40%;height:4.5%;"></button>
-        <button type="button" class="hotspot app" data-key="NETFLIX" title="Netflix" style="left:52%;top:65.8%;width:40%;height:4.5%;"></button>
-        <button type="button" class="hotspot app" data-key="PRIME" title="Prime Video" style="left:8%;top:71.2%;width:40%;height:4.5%;"></button>
-        <button type="button" class="hotspot app" data-key="DISNEY" title="Disney+" style="left:52%;top:71.2%;width:40%;height:4.5%;"></button>
+          <button type="button" class="hotspot app" data-key="YOUTUBE" title="YouTube" style="left:9%;top:65.7%;width:38%;height:5.5%;"></button>
+          <button type="button" class="hotspot app" data-key="NETFLIX" title="Netflix" style="left:52%;top:65.6%;width:38%;height:5.5%;"></button>
+          <button type="button" class="hotspot app" data-key="PRIME" title="Prime Video" style="left:9%;top:71.4%;width:38%;height:5.5%;"></button>
+          <button type="button" class="hotspot app" data-key="DISNEY" title="Disney+" style="left:52%;top:71.3%;width:38%;height:5.5%;"></button>
+        </div>
       </div>
       <p class="remote-feedback" id="remote-feedback"></p>
     </div>
