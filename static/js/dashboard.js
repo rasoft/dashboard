@@ -2,21 +2,24 @@ const PANEL_DEFS = {
   remote: {
     id: "remote",
     title: "遥控器",
-    w: 4,
-    h: 8,
+    w: 3,
+    h: 18,
     minW: 3,
-    minH: 6,
+    minH: 18,
+    maxW: 3,
+    maxH: 18,
     x: 0,
     y: 0,
+    lockedSize: true,
   },
   hdmi: {
     id: "hdmi",
     title: "HDMI 输出监测",
-    w: 8,
-    h: 10,
+    w: 9,
+    h: 14,
     minW: 5,
     minH: 7,
-    x: 4,
+    x: 3,
     y: 0,
   },
 };
@@ -82,6 +85,15 @@ const Dashboard = (() => {
   function geometryFor(panelId, opts = {}) {
     const def = PANEL_DEFS[panelId];
     const saved = loadStore().layouts[panelId] || {};
+    // Size-locked panels always use definition size; only position is restored.
+    if (def.lockedSize) {
+      return {
+        x: opts.x ?? saved.x ?? def.x,
+        y: opts.y ?? saved.y ?? def.y,
+        w: def.w,
+        h: def.h,
+      };
+    }
     return {
       x: opts.x ?? saved.x ?? def.x,
       y: opts.y ?? saved.y ?? def.y,
@@ -122,11 +134,15 @@ const Dashboard = (() => {
       y: geo.y,
       w: geo.w,
       h: geo.h,
-      minW: def.minW,
-      minH: def.minH,
+      minW: def.minW ?? def.w,
+      minH: def.minH ?? def.h,
+      maxW: def.maxW,
+      maxH: def.maxH,
+      noResize: !!def.lockedSize,
     });
 
     const contentHost = widget.querySelector(".grid-stack-item-content");
+    contentHost.classList.add(`panel-host-${panelId}`);
     contentHost.innerHTML = "";
     const panelEl = buildPanelContent(panelId);
     contentHost.appendChild(panelEl);
@@ -146,11 +162,12 @@ const Dashboard = (() => {
     const node = grid.engine.nodes.find((n) => n.id === panelId);
     if (node) {
       const store = loadStore();
+      const def = PANEL_DEFS[panelId];
       store.layouts[panelId] = {
         x: node.x,
         y: node.y,
-        w: node.w,
-        h: node.h,
+        w: def?.lockedSize ? def.w : node.w,
+        h: def?.lockedSize ? def.h : node.h,
       };
       saveStore(store);
     }
@@ -164,11 +181,12 @@ const Dashboard = (() => {
     const store = loadStore();
     grid.save(false).forEach((item) => {
       if (!item?.id) return;
+      const def = PANEL_DEFS[item.id];
       store.layouts[item.id] = {
         x: item.x,
         y: item.y,
-        w: item.w,
-        h: item.h,
+        w: def?.lockedSize ? def.w : item.w,
+        h: def?.lockedSize ? def.h : item.h,
       };
     });
     store.open = [...openPanels];
@@ -205,16 +223,32 @@ const Dashboard = (() => {
   function setupAddMenu() {
     const btn = document.getElementById("btn-add-panel");
     const menu = document.getElementById("add-panel-menu");
-    btn.addEventListener("click", () => {
+    if (!btn || !menu) return;
+
+    const closeMenu = () => {
+      menu.hidden = true;
+    };
+    const toggleMenu = () => {
       menu.hidden = !menu.hidden;
+    };
+
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleMenu();
     });
     document.addEventListener("click", (e) => {
-      if (!btn.contains(e.target) && !menu.contains(e.target)) menu.hidden = true;
+      if (menu.hidden) return;
+      if (btn.contains(e.target) || menu.contains(e.target)) return;
+      closeMenu();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeMenu();
     });
     menu.querySelectorAll("button[data-panel]").forEach((b) => {
-      b.addEventListener("click", () => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
         addPanel(b.dataset.panel);
-        menu.hidden = true;
+        closeMenu();
       });
     });
   }

@@ -139,6 +139,10 @@ body {
   z-index: 30;
 }
 
+.menu[hidden] {
+  display: none !important;
+}
+
 .menu button {
   appearance: none;
   border: 0;
@@ -249,79 +253,120 @@ body {
   padding: 0.75rem;
 }
 
-/* Remote */
+.panel[data-panel-id="remote"] .panel-body {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0.4rem 0.35rem;
+  background: #ffffff;
+}
+
+.panel-host-remote {
+  background: #ffffff !important;
+  border-color: #d8d8d8 !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12) !important;
+}
+
+.panel-host-remote .panel-header {
+  background: #f5f5f5;
+  border-bottom-color: #e6e6e6;
+  color: #222;
+}
+
+.panel-host-remote .panel-title {
+  color: #222;
+}
+
+.panel-host-remote .icon-btn {
+  color: #666;
+}
+
+.panel-host-remote .icon-btn:hover {
+  color: #111;
+  border-color: #ccc;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.panel-host-remote .remote-feedback {
+  color: #666;
+}
+
+/* Remote — photo with clickable hotspots */
 .remote {
-  display: grid;
-  gap: 1rem;
-}
-
-.remote-section h3 {
-  margin: 0 0 0.55rem;
-  font-size: 0.82rem;
-  color: var(--muted);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.dpad {
-  display: grid;
-  justify-items: center;
-  gap: 0.35rem;
-  margin-bottom: 0.7rem;
-}
-
-.dpad-mid {
   display: flex;
-  gap: 0.35rem;
+  flex-direction: column;
   align-items: center;
+  gap: 0.35rem;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
 }
 
-.key {
-  min-width: 56px;
-  min-height: 40px;
-  padding: 0.45rem 0.7rem;
+.remote-photo-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  line-height: 0;
+  user-select: none;
+}
+
+.remote-photo {
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  display: block;
+  pointer-events: none;
   border-radius: 8px;
-  border: 1px solid #3a4b5c;
-  background: linear-gradient(180deg, #2c3a48, #24313d);
-  color: var(--text);
 }
 
-.key:hover {
-  border-color: var(--accent);
+.hotspot {
+  position: absolute;
+  appearance: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  z-index: 2;
 }
 
-.key:active {
-  transform: translateY(1px);
+.hotspot.round {
+  border-radius: 50%;
 }
 
-.key-ok {
-  min-width: 64px;
-  background: linear-gradient(180deg, #3d9cf0, #2f7fc4);
-  border-color: #4aa3f0;
-  font-weight: 700;
+.hotspot.pad,
+.hotspot.rocker,
+.hotspot.app {
+  border-radius: 10px;
 }
 
-.key-accent {
-  border-color: #4aa3f0;
+.hotspot:hover,
+.hotspot:focus-visible {
+  background: rgba(61, 156, 240, 0.22);
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(61, 156, 240, 0.55);
 }
 
-.key-danger {
-  border-color: #8a3d3d;
-  color: #ffb4b4;
-}
-
-.key-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
+.hotspot:active {
+  background: rgba(61, 156, 240, 0.38);
 }
 
 .remote-feedback {
   margin: 0;
-  min-height: 1.2em;
+  min-height: 1em;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.75rem;
+  text-align: center;
+  width: 100%;
+  flex: 0 0 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .remote-feedback.error {

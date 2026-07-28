@@ -27,6 +27,9 @@ KEY_MAP: dict[str, int | dict[str, str]] = {
     "POWER": 26,
     "CHANNEL_UP": 166,
     "CHANNEL_DOWN": 167,
+    "TV_INPUT": 178,
+    "BOOKMARK": 174,
+    "LIVE": 170,
     "NETFLIX": {
         "type": "intent",
         "cmd": "am start -a android.intent.action.VIEW -d https://www.netflix.com/title",
@@ -38,6 +41,10 @@ KEY_MAP: dict[str, int | dict[str, str]] = {
     "PRIME": {
         "type": "intent",
         "cmd": "am start -a android.intent.action.VIEW -d https://app.primevideo.com",
+    },
+    "DISNEY": {
+        "type": "intent",
+        "cmd": "am start -a android.intent.action.VIEW -d https://www.disneyplus.com",
     },
 }
 

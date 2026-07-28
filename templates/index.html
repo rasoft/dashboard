@@ -58,43 +58,42 @@
 
   <template id="tpl-remote">
     <div class="remote">
-      <section class="remote-section">
-        <h3>导航与控制</h3>
-        <div class="dpad">
-          <button class="key" data-key="DPAD_UP" title="上">▲</button>
-          <div class="dpad-mid">
-            <button class="key" data-key="DPAD_LEFT" title="左">◀</button>
-            <button class="key key-ok" data-key="DPAD_CENTER" title="确认">OK</button>
-            <button class="key" data-key="DPAD_RIGHT" title="右">▶</button>
-          </div>
-          <button class="key" data-key="DPAD_DOWN" title="下">▼</button>
-        </div>
-        <div class="key-row">
-          <button class="key" data-key="BACK" title="返回">返回</button>
-          <button class="key" data-key="HOME" title="主页">主页</button>
-          <button class="key" data-key="SETTINGS" title="设置">设置</button>
-        </div>
-      </section>
-      <section class="remote-section">
-        <h3>智能与音频</h3>
-        <div class="key-row">
-          <button class="key key-accent" data-key="ASSISTANT" title="语音助手">助手</button>
-          <button class="key" data-key="VOLUME_UP" title="音量+">音量+</button>
-          <button class="key" data-key="VOLUME_DOWN" title="音量-">音量-</button>
-          <button class="key" data-key="MUTE" title="静音">静音</button>
-          <button class="key key-danger" data-key="POWER" title="电源">电源</button>
-        </div>
-      </section>
-      <section class="remote-section">
-        <h3>媒体与快捷键</h3>
-        <div class="key-row">
-          <button class="key" data-key="NETFLIX">Netflix</button>
-          <button class="key" data-key="YOUTUBE">YouTube</button>
-          <button class="key" data-key="PRIME">Prime</button>
-          <button class="key" data-key="CHANNEL_UP">频道+</button>
-          <button class="key" data-key="CHANNEL_DOWN">频道-</button>
-        </div>
-      </section>
+      <div class="remote-photo-wrap" aria-label="Android TV 遥控器">
+        <img
+          class="remote-photo"
+          src="/static/img/remote.png"
+          alt="遥控器"
+          draggable="false"
+        />
+        <!-- Hotspots mapped to physical remote buttons (percent of image) -->
+        <button type="button" class="hotspot round" data-key="POWER" title="电源" style="left:10%;top:2.8%;width:18%;height:5%;"></button>
+        <button type="button" class="hotspot round" data-key="TV_INPUT" title="输入源" style="left:72%;top:2.8%;width:18%;height:5%;"></button>
+
+        <button type="button" class="hotspot round" data-key="BOOKMARK" title="列表" style="left:10%;top:10.5%;width:18%;height:5%;"></button>
+        <button type="button" class="hotspot round" data-key="ASSISTANT" title="Google 助手" style="left:34%;top:9.5%;width:32%;height:7.5%;"></button>
+        <button type="button" class="hotspot round" data-key="SETTINGS" title="设置" style="left:72%;top:10.5%;width:18%;height:5%;"></button>
+
+        <button type="button" class="hotspot pad" data-key="DPAD_UP" title="上" style="left:36%;top:20.5%;width:28%;height:6%;"></button>
+        <button type="button" class="hotspot pad" data-key="DPAD_LEFT" title="左" style="left:18%;top:26.5%;width:18%;height:7.5%;"></button>
+        <button type="button" class="hotspot round" data-key="DPAD_CENTER" title="确认" style="left:36%;top:26.5%;width:28%;height:7.5%;"></button>
+        <button type="button" class="hotspot pad" data-key="DPAD_RIGHT" title="右" style="left:64%;top:26.5%;width:18%;height:7.5%;"></button>
+        <button type="button" class="hotspot pad" data-key="DPAD_DOWN" title="下" style="left:36%;top:34%;width:28%;height:6%;"></button>
+
+        <button type="button" class="hotspot round" data-key="BACK" title="返回" style="left:10%;top:42%;width:20%;height:5.2%;"></button>
+        <button type="button" class="hotspot round" data-key="HOME" title="主页" style="left:40%;top:42%;width:20%;height:5.2%;"></button>
+        <button type="button" class="hotspot round" data-key="LIVE" title="直播" style="left:70%;top:42%;width:20%;height:5.2%;"></button>
+
+        <button type="button" class="hotspot rocker" data-key="VOLUME_UP" title="音量+" style="left:10%;top:50%;width:20%;height:4.5%;"></button>
+        <button type="button" class="hotspot rocker" data-key="VOLUME_DOWN" title="音量-" style="left:10%;top:56.8%;width:20%;height:4.5%;"></button>
+        <button type="button" class="hotspot round" data-key="MUTE" title="静音" style="left:40%;top:52.8%;width:20%;height:5.2%;"></button>
+        <button type="button" class="hotspot rocker" data-key="CHANNEL_UP" title="频道+" style="left:70%;top:50%;width:20%;height:4.5%;"></button>
+        <button type="button" class="hotspot rocker" data-key="CHANNEL_DOWN" title="频道-" style="left:70%;top:56.8%;width:20%;height:4.5%;"></button>
+
+        <button type="button" class="hotspot app" data-key="YOUTUBE" title="YouTube" style="left:8%;top:65.8%;width:40%;height:4.5%;"></button>
+        <button type="button" class="hotspot app" data-key="NETFLIX" title="Netflix" style="left:52%;top:65.8%;width:40%;height:4.5%;"></button>
+        <button type="button" class="hotspot app" data-key="PRIME" title="Prime Video" style="left:8%;top:71.2%;width:40%;height:4.5%;"></button>
+        <button type="button" class="hotspot app" data-key="DISNEY" title="Disney+" style="left:52%;top:71.2%;width:40%;height:4.5%;"></button>
+      </div>
       <p class="remote-feedback" id="remote-feedback"></p>
     </div>
   </template>
