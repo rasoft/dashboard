@@ -68,6 +68,16 @@ def _run(args: list[str], timeout: float = 8.0) -> subprocess.CompletedProcess[s
     )
 
 
+def run_adb(args: list[str], timeout: float = 8.0) -> subprocess.CompletedProcess[str]:
+    """Run an adb subcommand with configured path/serial."""
+    return _run(_adb_base() + list(args), timeout=timeout)
+
+
+def run_shell(command: str, timeout: float = 8.0) -> subprocess.CompletedProcess[str]:
+    """Run `adb shell <command>` (command as a single shell string)."""
+    return _run(_adb_base() + ["shell", command], timeout=timeout)
+
+
 def list_devices() -> list[dict[str, str]]:
     adb = current_app.config.get("ADB_PATH", "adb")
     try:

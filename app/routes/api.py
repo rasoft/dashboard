@@ -1,6 +1,6 @@
 from flask import Blueprint, current_app, jsonify, request
 
-from app.services import adb, bandwidth, capture
+from app.services import adb, bandwidth, capture, ddr_bw
 from app.services.webrtc import webrtc_manager
 
 api_bp = Blueprint("api", __name__)
@@ -56,3 +56,22 @@ def hdmi_bandwidth():
 @api_bp.get("/serial/ports")
 def serial_ports():
     return jsonify({"ports": capture.discover_serial_ports()})
+
+
+@api_bp.post("/ddr/enable")
+def ddr_enable():
+    result = ddr_bw.enable_monitor()
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.get("/ddr/sample")
+def ddr_sample():
+    raw_targets = request.args.get("targets") or request.args.get("target") or ""
+    if raw_targets.strip():
+        targets = [t.strip() for t in raw_targets.split(",") if t.strip()]
+    else:
+        targets = list(ddr_bw.DEFAULT_TARGETS)
+    result = ddr_bw.sample(targets=targets)
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status

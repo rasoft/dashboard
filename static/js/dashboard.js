@@ -22,6 +22,16 @@ const PANEL_DEFS = {
     x: 3,
     y: 0,
   },
+  ddr: {
+    id: "ddr",
+    title: "内存带宽",
+    w: 9,
+    h: 16,
+    minW: 5,
+    minH: 10,
+    x: 3,
+    y: 14,
+  },
 };
 
 const STORAGE_KEY = "android-board-dashboard-layout-v2";
@@ -113,6 +123,8 @@ const Dashboard = (() => {
       body.appendChild(cloneTemplate("tpl-remote"));
     } else if (panelId === "hdmi") {
       body.appendChild(cloneTemplate("tpl-hdmi"));
+    } else if (panelId === "ddr") {
+      body.appendChild(cloneTemplate("tpl-ddr"));
     }
 
     panel.querySelector('[data-action="close"]').addEventListener("click", (e) => {
@@ -150,6 +162,7 @@ const Dashboard = (() => {
     openPanels.add(panelId);
     if (panelId === "remote" && window.RemotePanel) window.RemotePanel.mount(panelEl);
     if (panelId === "hdmi" && window.HdmiPanel) window.HdmiPanel.mount(panelEl);
+    if (panelId === "ddr" && window.DdrPanel) window.DdrPanel.mount(panelEl);
     persist();
   }
 
@@ -159,6 +172,9 @@ const Dashboard = (() => {
     }
     if (panelId === "remote" && window.RemotePanel?.unmount) {
       window.RemotePanel.unmount();
+    }
+    if (panelId === "ddr" && window.DdrPanel?.unmount) {
+      window.DdrPanel.unmount();
     }
 
     // Remember last size/position before removing from the grid.

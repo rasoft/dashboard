@@ -456,6 +456,150 @@ body {
   font-size: 0.82rem;
 }
 
+/* DDR memory bandwidth */
+.ddr {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  height: 100%;
+  min-height: 0;
+}
+
+.ddr-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.ddr-track-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.ddr-track-btn {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.78rem;
+}
+
+.ddr-track-btn:hover {
+  border-color: #3f5366;
+  color: var(--text);
+}
+
+.ddr-track-btn[aria-pressed="true"] {
+  background: rgba(61, 156, 240, 0.18);
+  border-color: rgba(61, 156, 240, 0.45);
+  color: #cfe6fb;
+}
+
+.ddr-charts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.ddr-chart-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex: 1 1 160px;
+  min-height: 140px;
+}
+
+.ddr-chart-block[hidden] {
+  display: none !important;
+}
+
+.ddr-meta {
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  background: rgba(61, 156, 240, 0.1);
+  border: 1px solid rgba(61, 156, 240, 0.28);
+  color: #b9d9f8;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ddr-meta-gpu {
+  background: rgba(43, 182, 115, 0.1);
+  border-color: rgba(43, 182, 115, 0.28);
+  color: #b7e6cd;
+}
+
+.ddr-meta-vpu {
+  background: rgba(212, 160, 23, 0.1);
+  border-color: rgba(212, 160, 23, 0.28);
+  color: #e6d4a0;
+}
+
+.ddr-meta-audio {
+  background: rgba(160, 120, 200, 0.1);
+  border-color: rgba(160, 120, 200, 0.28);
+  color: #d4c0e8;
+}
+
+.ddr-meta-vdec {
+  background: rgba(180, 120, 220, 0.1);
+  border-color: rgba(180, 120, 220, 0.28);
+  color: #d7c0ea;
+}
+
+.ddr-meta-vdec2k {
+  background: rgba(226, 92, 92, 0.1);
+  border-color: rgba(226, 92, 92, 0.28);
+  color: #e8b0b0;
+}
+
+.ddr-meta-emmc {
+  background: rgba(100, 180, 200, 0.1);
+  border-color: rgba(100, 180, 200, 0.28);
+  color: #b5dbe6;
+}
+
+.ddr-meta-usbpcie {
+  background: rgba(90, 140, 220, 0.1);
+  border-color: rgba(90, 140, 220, 0.28);
+  color: #b8ccee;
+}
+
+.ddr-meta-phyeth {
+  background: rgba(70, 190, 160, 0.1);
+  border-color: rgba(70, 190, 160, 0.28);
+  color: #b0e6d4;
+}
+
+.ddr-chart-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 120px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.22);
+  padding: 0.45rem 0.35rem 0.3rem;
+}
+
+.ddr-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.ddr-status.error {
+  color: var(--danger);
+}
+
 @media (max-width: 720px) {
   .topbar {
     padding: 0.75rem;
