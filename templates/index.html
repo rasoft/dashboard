@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Android Board Dashboard</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <div>
+        <h1>Android Board Dashboard</h1>
+        <p class="subtitle">工作站监测控制台</p>
+      </div>
+    </div>
+    <div class="status-group" id="status-group">
+      <div class="status-pill" id="status-adb" data-state="unknown">
+        <span class="dot"></span>
+        <span class="label">ADB</span>
+        <span class="detail">检测中…</span>
+      </div>
+      <div class="status-pill" id="status-hdmi" data-state="unknown">
+        <span class="dot"></span>
+        <span class="label">HDMI 采集</span>
+        <span class="detail">检测中…</span>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <div class="add-panel-wrap">
+        <button type="button" class="btn" id="btn-add-panel">添加面板</button>
+        <div class="menu" id="add-panel-menu" hidden>
+          <button type="button" data-panel="remote">遥控器</button>
+          <button type="button" data-panel="hdmi">HDMI 输出监测</button>
+        </div>
+      </div>
+      <button type="button" class="btn btn-ghost" id="btn-refresh-status">刷新状态</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <div class="grid-stack" id="dashboard-grid"></div>
+  </main>
+
+  <template id="tpl-panel-shell">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title"></span>
+        <div class="panel-actions">
+          <button type="button" class="icon-btn" data-action="collapse" title="折叠">▾</button>
+          <button type="button" class="icon-btn" data-action="close" title="关闭">✕</button>
+        </div>
+      </div>
+      <div class="panel-body"></div>
+    </div>
+  </template>
+
+  <template id="tpl-remote">
+    <div class="remote">
+      <section class="remote-section">
+        <h3>导航与控制</h3>
+        <div class="dpad">
+          <button class="key" data-key="DPAD_UP" title="上">▲</button>
+          <div class="dpad-mid">
+            <button class="key" data-key="DPAD_LEFT" title="左">◀</button>
+            <button class="key key-ok" data-key="DPAD_CENTER" title="确认">OK</button>
+            <button class="key" data-key="DPAD_RIGHT" title="右">▶</button>
+          </div>
+          <button class="key" data-key="DPAD_DOWN" title="下">▼</button>
+        </div>
+        <div class="key-row">
+          <button class="key" data-key="BACK" title="返回">返回</button>
+          <button class="key" data-key="HOME" title="主页">主页</button>
+          <button class="key" data-key="SETTINGS" title="设置">设置</button>
+        </div>
+      </section>
+      <section class="remote-section">
+        <h3>智能与音频</h3>
+        <div class="key-row">
+          <button class="key key-accent" data-key="ASSISTANT" title="语音助手">助手</button>
+          <button class="key" data-key="VOLUME_UP" title="音量+">音量+</button>
+          <button class="key" data-key="VOLUME_DOWN" title="音量-">音量-</button>
+          <button class="key" data-key="MUTE" title="静音">静音</button>
+          <button class="key key-danger" data-key="POWER" title="电源">电源</button>
+        </div>
+      </section>
+      <section class="remote-section">
+        <h3>媒体与快捷键</h3>
+        <div class="key-row">
+          <button class="key" data-key="NETFLIX">Netflix</button>
+          <button class="key" data-key="YOUTUBE">YouTube</button>
+          <button class="key" data-key="PRIME">Prime</button>
+          <button class="key" data-key="CHANNEL_UP">频道+</button>
+          <button class="key" data-key="CHANNEL_DOWN">频道-</button>
+        </div>
+      </section>
+      <p class="remote-feedback" id="remote-feedback"></p>
+    </div>
+  </template>
+
+  <template id="tpl-hdmi">
+    <div class="hdmi">
+      <div class="hdmi-controls">
+        <label>
+          分辨率
+          <select id="hdmi-resolution">
+            <option value="1280x720" selected>1280 × 720</option>
+            <option value="1920x1080">1920 × 1080</option>
+          </select>
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" id="hdmi-audio" checked />
+          音频
+        </label>
+        <button type="button" class="btn" id="hdmi-start">开始监测</button>
+        <button type="button" class="btn btn-ghost" id="hdmi-stop" disabled>停止</button>
+      </div>
+      <div class="hdmi-bandwidth" id="hdmi-bandwidth">带宽估算加载中…</div>
+      <div class="hdmi-stage">
+        <video id="hdmi-video" autoplay playsinline muted></video>
+        <div class="hdmi-overlay" id="hdmi-overlay">未开始</div>
+      </div>
+      <p class="hdmi-status" id="hdmi-status">等待操作</p>
+    </div>
+  </template>
+
+  <script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js"></script>
+  <script src="{{ url_for('static', filename='js/remote.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/hdmi.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>

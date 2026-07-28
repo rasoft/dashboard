@@ -1,0 +1,430 @@
+:root {
+  --bg0: #0f1419;
+  --bg1: #171e26;
+  --bg2: #1f2933;
+  --line: #2d3a47;
+  --text: #e7eef6;
+  --muted: #8ea0b2;
+  --accent: #3d9cf0;
+  --accent-2: #2bb673;
+  --danger: #e25c5c;
+  --warn: #d4a017;
+  --panel-radius: 10px;
+  --font: "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #1b3348 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, #1a2a22 0%, transparent 50%),
+    var(--bg0);
+  color: var(--text);
+  font-family: var(--font);
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  background: rgba(15, 20, 25, 0.85);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 220px;
+}
+
+.brand-mark {
+  width: 14px;
+  height: 36px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.subtitle {
+  margin: 0.1rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.status-group {
+  display: flex;
+  gap: 0.6rem;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg1);
+  font-size: 0.8rem;
+}
+
+.status-pill .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.status-pill[data-state="ok"] .dot {
+  background: var(--accent-2);
+  box-shadow: 0 0 0 3px rgba(43, 182, 115, 0.2);
+}
+
+.status-pill[data-state="bad"] .dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(226, 92, 92, 0.18);
+}
+
+.status-pill .detail {
+  color: var(--muted);
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.add-panel-wrap {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 180px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.35rem;
+  display: grid;
+  gap: 0.25rem;
+  z-index: 30;
+}
+
+.menu button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 0.55rem 0.7rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.menu button:hover {
+  background: rgba(61, 156, 240, 0.15);
+}
+
+.btn,
+.key,
+.icon-btn {
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn {
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, #2a3948, #22303c);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.45rem 0.85rem;
+}
+
+.btn:hover {
+  border-color: #3f5366;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-ghost {
+  background: transparent;
+}
+
+.workspace {
+  padding: 1rem;
+  flex: 1;
+}
+
+.grid-stack {
+  min-height: calc(100vh - 110px);
+}
+
+.grid-stack-item-content {
+  inset: 4px !important;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--panel-radius);
+  background: linear-gradient(180deg, rgba(31, 41, 51, 0.96), rgba(23, 30, 38, 0.98));
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+
+.panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  cursor: grab;
+  user-select: none;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.panel-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.icon-btn:hover {
+  border-color: var(--line);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.panel-body {
+  flex: 1;
+  overflow: auto;
+  padding: 0.75rem;
+}
+
+.panel.collapsed .panel-body {
+  display: none;
+}
+
+.panel.collapsed .panel-header [data-action="collapse"] {
+  transform: rotate(-90deg);
+}
+
+/* Remote */
+.remote {
+  display: grid;
+  gap: 1rem;
+}
+
+.remote-section h3 {
+  margin: 0 0 0.55rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dpad {
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.7rem;
+}
+
+.dpad-mid {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.key {
+  min-width: 56px;
+  min-height: 40px;
+  padding: 0.45rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid #3a4b5c;
+  background: linear-gradient(180deg, #2c3a48, #24313d);
+  color: var(--text);
+}
+
+.key:hover {
+  border-color: var(--accent);
+}
+
+.key:active {
+  transform: translateY(1px);
+}
+
+.key-ok {
+  min-width: 64px;
+  background: linear-gradient(180deg, #3d9cf0, #2f7fc4);
+  border-color: #4aa3f0;
+  font-weight: 700;
+}
+
+.key-accent {
+  border-color: #4aa3f0;
+}
+
+.key-danger {
+  border-color: #8a3d3d;
+  color: #ffb4b4;
+}
+
+.key-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.remote-feedback {
+  margin: 0;
+  min-height: 1.2em;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.remote-feedback.error {
+  color: var(--danger);
+}
+
+/* HDMI */
+.hdmi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  height: 100%;
+}
+
+.hdmi-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.hdmi-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.hdmi-controls select {
+  background: var(--bg0);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+}
+
+.checkbox input {
+  accent-color: var(--accent);
+}
+
+.hdmi-bandwidth {
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  background: rgba(61, 156, 240, 0.1);
+  border: 1px solid rgba(61, 156, 240, 0.28);
+  color: #b9d9f8;
+  font-size: 0.85rem;
+}
+
+.hdmi-stage {
+  position: relative;
+  flex: 1;
+  min-height: 220px;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.hdmi-stage video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  display: block;
+}
+
+.hdmi-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 0.95rem;
+}
+
+.hdmi-overlay.hidden {
+  display: none;
+}
+
+.hdmi-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    padding: 0.75rem;
+  }
+
+  .workspace {
+    padding: 0.6rem;
+  }
+}
