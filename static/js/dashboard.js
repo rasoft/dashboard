@@ -34,12 +34,22 @@ const PANEL_DEFS = {
   },
   hwc: {
     id: "hwc",
-    title: "HWC层",
+    title: "Sf-HWC层",
     w: 6,
     h: 12,
     minW: 4,
     minH: 8,
     x: 0,
+    y: 18,
+  },
+  "sf-events": {
+    id: "sf-events",
+    title: "Sf-事件",
+    w: 6,
+    h: 10,
+    minW: 4,
+    minH: 7,
+    x: 6,
     y: 18,
   },
 };
@@ -249,6 +259,8 @@ const Dashboard = (() => {
       body.appendChild(cloneTemplate("tpl-ddr"));
     } else if (panelId === "hwc") {
       body.appendChild(cloneTemplate("tpl-hwc"));
+    } else if (panelId === "sf-events") {
+      body.appendChild(cloneTemplate("tpl-sf-events"));
     }
 
     panel.querySelector('[data-action="close"]').addEventListener("click", (e) => {
@@ -256,7 +268,8 @@ const Dashboard = (() => {
       closePanel(panelId);
     });
 
-    panel.querySelector(".panel-header").addEventListener("pointerdown", (e) => {
+    // Click anywhere on the panel (header or body) to raise it above siblings.
+    panel.addEventListener("pointerdown", (e) => {
       if (e.target.closest('[data-action="close"]')) return;
       const item = panel.closest(".grid-stack-item");
       bringToFront(item);
@@ -294,6 +307,9 @@ const Dashboard = (() => {
     if (panelId === "hdmi" && window.HdmiPanel) window.HdmiPanel.mount(panelEl);
     if (panelId === "ddr" && window.DdrPanel) window.DdrPanel.mount(panelEl);
     if (panelId === "hwc" && window.HwcPanel) window.HwcPanel.mount(panelEl);
+    if (panelId === "sf-events" && window.SfEventsPanel) {
+      window.SfEventsPanel.mount(panelEl);
+    }
 
     const node = grid.engine.nodes.find((n) => n.id === panelId);
     if (node) clampNode(node);
@@ -312,6 +328,9 @@ const Dashboard = (() => {
     }
     if (panelId === "hwc" && window.HwcPanel?.unmount) {
       window.HwcPanel.unmount();
+    }
+    if (panelId === "sf-events" && window.SfEventsPanel?.unmount) {
+      window.SfEventsPanel.unmount();
     }
 
     // Remember last size/position before removing from the grid.

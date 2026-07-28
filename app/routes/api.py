@@ -1,6 +1,6 @@
 from flask import Blueprint, current_app, jsonify, request
 
-from app.services import adb, bandwidth, capture, ddr_bw, hwc_layers
+from app.services import adb, bandwidth, capture, ddr_bw, hwc_layers, sf_events
 from app.services.webrtc import webrtc_manager
 
 api_bp = Blueprint("api", __name__)
@@ -80,5 +80,12 @@ def ddr_sample():
 @api_bp.get("/hwc/layers")
 def hwc_layers_sample():
     result = hwc_layers.sample()
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.get("/sf/events")
+def sf_events_sample():
+    result = sf_events.sample()
     status = 200 if result.get("ok") else 400
     return jsonify(result), status

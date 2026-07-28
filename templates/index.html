@@ -35,7 +35,8 @@
           <button type="button" data-panel="remote">遥控器</button>
           <button type="button" data-panel="hdmi">HDMI 输出监测</button>
           <button type="button" data-panel="ddr">内存带宽</button>
-          <button type="button" data-panel="hwc">HWC层</button>
+          <button type="button" data-panel="hwc">Sf-HWC层</button>
+          <button type="button" data-panel="sf-events">Sf-事件</button>
         </div>
       </div>
       <button type="button" class="btn btn-ghost" id="btn-refresh-status">刷新状态</button>
@@ -230,6 +231,19 @@
     </div>
   </template>
 
+  <template id="tpl-sf-events">
+    <div class="sf-events">
+      <div class="sf-events-controls">
+        <button type="button" class="btn btn-ghost" id="sf-events-clear">清空曲线</button>
+      </div>
+      <div class="sf-events-meta" id="sf-events-meta">等待采样…</div>
+      <div class="sf-events-chart-wrap">
+        <canvas id="sf-events-chart" aria-label="SurfaceFlinger events 时序曲线"></canvas>
+      </div>
+      <p class="sf-events-status" id="sf-events-status">等待操作</p>
+    </div>
+  </template>
+
   <script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
@@ -237,6 +251,7 @@
   <script src="{{ url_for('static', filename='js/hdmi.js') }}"></script>
   <script src="{{ url_for('static', filename='js/ddr.js') }}"></script>
   <script src="{{ url_for('static', filename='js/hwc.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/sf-events.js') }}"></script>
   <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>

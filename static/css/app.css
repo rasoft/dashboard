@@ -739,6 +739,52 @@ body {
   color: var(--danger);
 }
 
+/* SurfaceFlinger events */
+.sf-events {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  height: 100%;
+  min-height: 0;
+}
+
+.sf-events-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.sf-events-meta {
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  background: rgba(61, 156, 240, 0.1);
+  border: 1px solid rgba(61, 156, 240, 0.28);
+  color: #b9d9f8;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.sf-events-chart-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 160px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.22);
+  padding: 0.35rem 0.45rem 0.2rem;
+}
+
+.sf-events-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.sf-events-status.error {
+  color: var(--danger);
+}
+
 @media (max-width: 720px) {
   .topbar {
     padding: 0.75rem;
