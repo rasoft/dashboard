@@ -4,7 +4,7 @@
 
 ## 功能
 
-- **可拖拽面板框架**：折叠、关闭、移动、缩放；布局保存在浏览器 `localStorage`
+- **可拖拽面板框架**：关闭、移动、缩放；每个面板会记住最后一次的大小与位置（含关闭后再打开）
 - **遥控器面板**：经 ADB `input keyevent` / 应用 deep link 发送按键
 - **HDMI 输出监测**：经 MACROSILICON USB3 Video 采集，使用 WebRTC 推送到浏览器
 - 开始监测后按秒刷新实时网络带宽（WebRTC 收流统计）；未开播时显示预估
@@ -100,7 +100,9 @@ run.py
 - 若提示 `Device or resource busy`：确认没有其他进程占用 `/dev/video0`，然后重启 Dashboard。
 - 画面全黑但连接成功：检查开发板 HDMI 是否已接到采集卡、输入源是否有信号。
 - 面板状态会显示 ICE / PeerConnection 状态；信令需先连通再发 Offer。
+- 若 `Ctrl+C` 后终端不回显输入：执行 `stty sane`（或 `reset`）。新版本退出时会自动恢复。
 
+## 后续扩展
 
 - 串口终端面板（基于 `/dev/serial/by-id/...FTDI...`）
 - HTTPS / 简易鉴权

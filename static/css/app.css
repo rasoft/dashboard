@@ -249,14 +249,6 @@ body {
   padding: 0.75rem;
 }
 
-.panel.collapsed .panel-body {
-  display: none;
-}
-
-.panel.collapsed .panel-header [data-action="collapse"] {
-  transform: rotate(-90deg);
-}
-
 /* Remote */
 .remote {
   display: grid;

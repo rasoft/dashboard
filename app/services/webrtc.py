@@ -74,9 +74,11 @@ class FFmpegV4L2Track(VideoStreamTrack):
             logger.info("starting capture: %s", " ".join(cmd))
             self._proc = subprocess.Popen(
                 cmd,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 bufsize=self._frame_bytes * 2,
+                start_new_session=True,
             )
 
             def _drain_stderr() -> None:
@@ -206,9 +208,11 @@ class FFmpegAlsaTrack(AudioStreamTrack):
             logger.info("starting audio capture: %s", " ".join(cmd))
             self._proc = subprocess.Popen(
                 cmd,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 bufsize=self._frame_bytes * 8,
+                start_new_session=True,
             )
 
             def _drain_stderr() -> None:

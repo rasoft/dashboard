@@ -21,7 +21,8 @@ const PANEL_DEFS = {
   },
 };
 
-const STORAGE_KEY = "android-board-dashboard-layout-v1";
+const STORAGE_KEY = "android-board-dashboard-layout-v2";
+const STORAGE_KEY_LEGACY = "android-board-dashboard-layout-v1";
 
 const Dashboard = (() => {
   let grid = null;
@@ -30,6 +31,63 @@ const Dashboard = (() => {
   function cloneTemplate(id) {
     const tpl = document.getElementById(id);
     return tpl.content.cloneNode(true);
+  }
+
+  function defaultStore() {
+    return {
+      layouts: {},
+      open: Object.keys(PANEL_DEFS),
+    };
+  }
+
+  function loadStore() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+      if (raw && typeof raw === "object" && raw.layouts) {
+        return {
+          layouts: raw.layouts || {},
+          open: Array.isArray(raw.open) ? raw.open : Object.keys(PANEL_DEFS),
+        };
+      }
+    } catch {
+      /* ignore */
+    }
+
+    // Migrate legacy format: { panels: [{id,x,y,w,h}, ...] }
+    try {
+      const legacy = JSON.parse(localStorage.getItem(STORAGE_KEY_LEGACY) || "null");
+      if (legacy?.panels?.length) {
+        const layouts = {};
+        const open = [];
+        legacy.panels.forEach((p) => {
+          if (!p?.id || !PANEL_DEFS[p.id]) return;
+          layouts[p.id] = { x: p.x, y: p.y, w: p.w, h: p.h };
+          open.push(p.id);
+        });
+        const migrated = { layouts, open };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+        return migrated;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    return defaultStore();
+  }
+
+  function saveStore(store) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  }
+
+  function geometryFor(panelId, opts = {}) {
+    const def = PANEL_DEFS[panelId];
+    const saved = loadStore().layouts[panelId] || {};
+    return {
+      x: opts.x ?? saved.x ?? def.x,
+      y: opts.y ?? saved.y ?? def.y,
+      w: opts.w ?? saved.w ?? def.w,
+      h: opts.h ?? saved.h ?? def.h,
+    };
   }
 
   function buildPanelContent(panelId) {
@@ -45,12 +103,6 @@ const Dashboard = (() => {
       body.appendChild(cloneTemplate("tpl-hdmi"));
     }
 
-    panel.querySelector('[data-action="collapse"]').addEventListener("click", (e) => {
-      e.stopPropagation();
-      panel.classList.toggle("collapsed");
-      persist();
-    });
-
     panel.querySelector('[data-action="close"]').addEventListener("click", (e) => {
       e.stopPropagation();
       closePanel(panelId);
@@ -62,13 +114,14 @@ const Dashboard = (() => {
   function addPanel(panelId, opts = {}) {
     if (!PANEL_DEFS[panelId] || openPanels.has(panelId)) return;
     const def = PANEL_DEFS[panelId];
+    const geo = geometryFor(panelId, opts);
 
     const widget = grid.addWidget({
       id: panelId,
-      x: opts.x ?? def.x,
-      y: opts.y ?? def.y,
-      w: opts.w ?? def.w,
-      h: opts.h ?? def.h,
+      x: geo.x,
+      y: geo.y,
+      w: geo.w,
+      h: geo.h,
       minW: def.minW,
       minH: def.minH,
     });
@@ -77,8 +130,6 @@ const Dashboard = (() => {
     contentHost.innerHTML = "";
     const panelEl = buildPanelContent(panelId);
     contentHost.appendChild(panelEl);
-
-    if (opts.collapsed) panelEl.classList.add("collapsed");
 
     openPanels.add(panelId);
     if (panelId === "remote" && window.RemotePanel) window.RemotePanel.mount(panelEl);
@@ -90,45 +141,45 @@ const Dashboard = (() => {
     if (panelId === "hdmi" && window.HdmiPanel) {
       window.HdmiPanel.stop().catch(() => {});
     }
+
+    // Remember last size/position before removing from the grid.
     const node = grid.engine.nodes.find((n) => n.id === panelId);
+    if (node) {
+      const store = loadStore();
+      store.layouts[panelId] = {
+        x: node.x,
+        y: node.y,
+        w: node.w,
+        h: node.h,
+      };
+      saveStore(store);
+    }
+
     if (node?.el) grid.removeWidget(node.el);
     openPanels.delete(panelId);
     persist();
   }
 
   function persist() {
-    const layout = grid.save(false).map((item) => {
-      const panel = item.el?.querySelector(".panel");
-      return {
-        id: item.id,
+    const store = loadStore();
+    grid.save(false).forEach((item) => {
+      if (!item?.id) return;
+      store.layouts[item.id] = {
         x: item.x,
         y: item.y,
         w: item.w,
         h: item.h,
-        collapsed: panel?.classList.contains("collapsed") || false,
       };
     });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ panels: layout }));
+    store.open = [...openPanels];
+    saveStore(store);
   }
 
   function restore() {
-    let saved = null;
-    try {
-      saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    } catch {
-      saved = null;
-    }
-
-    const panels = saved?.panels?.length
-      ? saved.panels
-      : [
-          { id: "remote", ...PANEL_DEFS.remote },
-          { id: "hdmi", ...PANEL_DEFS.hdmi },
-        ];
-
-    panels.forEach((p) => {
-      if (PANEL_DEFS[p.id]) addPanel(p.id, p);
-    });
+    const store = loadStore();
+    const toOpen = (store.open || []).filter((id) => PANEL_DEFS[id]);
+    const panels = toOpen.length ? toOpen : Object.keys(PANEL_DEFS);
+    panels.forEach((id) => addPanel(id));
   }
 
   async function refreshStatus() {

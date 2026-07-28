@@ -9,6 +9,8 @@ window.HdmiPanel = (() => {
   let offerSent = false;
   let statsTimer = null;
   let lastStats = null;
+  let unmuteTimer = null;
+  let unmuteGestureHandler = null;
 
   function els() {
     return {
@@ -143,6 +145,114 @@ window.HdmiPanel = (() => {
     }
   }
 
+  function stopUnmuteAssist() {
+    if (unmuteTimer) {
+      clearInterval(unmuteTimer);
+      unmuteTimer = null;
+    }
+    if (unmuteGestureHandler) {
+      window.removeEventListener("pointerdown", unmuteGestureHandler, true);
+      window.removeEventListener("keydown", unmuteGestureHandler, true);
+      window.removeEventListener("touchstart", unmuteGestureHandler, true);
+      unmuteGestureHandler = null;
+    }
+  }
+
+  async function playMuted(video) {
+    if (!video) return false;
+    video.muted = true;
+    video.defaultMuted = true;
+    video.setAttribute("muted", "");
+    video.playsInline = true;
+    try {
+      await video.play();
+      return !video.paused;
+    } catch (err) {
+      console.warn("muted play failed", err);
+      return false;
+    }
+  }
+
+  async function tryUnmute(showButtonOnFail = false) {
+    const { video, unmute, audio } = els();
+    if (!video || !audio?.checked) return false;
+
+    // Never leave the player paused: if unmute is blocked, keep muted playback.
+    if (video.paused) {
+      await playMuted(video);
+    }
+
+    const prevMuted = video.muted;
+    video.muted = false;
+    video.defaultMuted = false;
+    video.removeAttribute("muted");
+    video.volume = 1;
+    try {
+      await video.play();
+      if (!video.muted && !video.paused) {
+        if (unmute) unmute.hidden = true;
+        return true;
+      }
+    } catch (err) {
+      console.warn("unmute/play", err);
+    }
+
+    // Restore muted autoplay so the picture keeps running.
+    video.muted = true;
+    video.defaultMuted = true;
+    video.setAttribute("muted", "");
+    if (video.paused) await playMuted(video);
+    else if (!prevMuted) {
+      /* stay muted while playing */
+    }
+
+    if (showButtonOnFail && unmute && !video.paused) unmute.hidden = false;
+    return false;
+  }
+
+  function startUnmuteAssist() {
+    stopUnmuteAssist();
+    const { audio, unmute } = els();
+    if (!audio?.checked) return;
+    if (unmute) unmute.hidden = true;
+
+    let tries = 0;
+    unmuteTimer = setInterval(() => {
+      tries += 1;
+      tryUnmute(false).then((ok) => {
+        if (ok) {
+          stopUnmuteAssist();
+          setStatus("画面已连接（含音频）");
+          return;
+        }
+        // After several silent retries, hint but do not block video.
+        if (tries === 5) {
+          setStatus("画面播放中；点击页面任意处可开启声音");
+          const btn = els().unmute;
+          if (btn) btn.hidden = false;
+        }
+        if (tries >= 12 && unmuteTimer) {
+          clearInterval(unmuteTimer);
+          unmuteTimer = null;
+        }
+      });
+    }, 500);
+
+    unmuteGestureHandler = () => {
+      tryUnmute(false).then((ok) => {
+        if (ok) {
+          stopUnmuteAssist();
+          const btn = els().unmute;
+          if (btn) btn.hidden = true;
+          setStatus("已自动开启声音");
+        }
+      });
+    };
+    window.addEventListener("pointerdown", unmuteGestureHandler, true);
+    window.addEventListener("keydown", unmuteGestureHandler, true);
+    window.addEventListener("touchstart", unmuteGestureHandler, true);
+  }
+
   function waitConnected(sock, timeoutMs = 8000) {
     if (sock.connected) return Promise.resolve();
     return new Promise((resolve, reject) => {
@@ -235,6 +345,7 @@ window.HdmiPanel = (() => {
         setOverlay("", false);
         setButtons({ running: true });
         startStatsMonitor();
+        startUnmuteAssist();
       }
       if (state === "failed" || state === "closed") {
         cleanupPc();
@@ -256,6 +367,7 @@ window.HdmiPanel = (() => {
 
   function cleanupPc() {
     stopStatsMonitor();
+    stopUnmuteAssist();
     remoteDescriptionSet = false;
     offerSent = false;
     pendingRemoteIce = [];
@@ -280,6 +392,9 @@ window.HdmiPanel = (() => {
         /* ignore */
       }
       video.srcObject = null;
+      video.muted = true;
+      video.defaultMuted = true;
+      video.setAttribute("muted", "");
     }
   }
 
@@ -323,31 +438,30 @@ window.HdmiPanel = (() => {
         video.srcObject = new MediaStream();
       }
       video.srcObject.addTrack(ev.track);
-      video.muted = !enableAudio;
-      const { unmute } = els();
-      if (unmute) unmute.hidden = !enableAudio || !video.muted;
-      video
-        .play()
-        .then(() => {
-          if (enableAudio && video.muted) {
-            video.muted = false;
-            if (unmute) unmute.hidden = true;
-          }
-        })
-        .catch((err) => {
-          console.warn("video.play", err);
-          video.muted = true;
-          video.play().catch(() => {});
-          if (unmute && enableAudio) unmute.hidden = false;
-          setStatus("浏览器限制自动播放声音，请点击「取消静音」");
-        });
+
+      // Always start muted so autoplay works on page reload without a gesture.
+      playMuted(video).then((playing) => {
+        if (playing) {
+          setOverlay("", false);
+        }
+        if (enableAudio) {
+          startUnmuteAssist();
+          // One immediate unmute attempt; if blocked, muted video already plays.
+          tryUnmute(false);
+        } else {
+          stopUnmuteAssist();
+          const { unmute } = els();
+          if (unmute) unmute.hidden = true;
+        }
+      });
+
       if (ev.track.kind === "video") {
         setOverlay("", false);
-        setStatus(enableAudio ? "画面已连接（含音频）" : "画面已连接");
+        setStatus(enableAudio ? "画面已连接（尝试开启声音）" : "画面已连接");
         startStatsMonitor();
       }
       if (ev.track.kind === "audio") {
-        setStatus("已收到音频轨道");
+        if (enableAudio) tryUnmute(false);
       }
     };
 
@@ -368,7 +482,10 @@ window.HdmiPanel = (() => {
     pc.onconnectionstatechange = () => {
       if (!pc) return;
       setStatus(`连接状态：${pc.connectionState}`);
-      if (pc.connectionState === "connected") startStatsMonitor();
+      if (pc.connectionState === "connected") {
+        startStatsMonitor();
+        startUnmuteAssist();
+      }
     };
 
     pc.oniceconnectionstatechange = () => {
@@ -426,12 +543,12 @@ window.HdmiPanel = (() => {
     stopBtn.addEventListener("click", () => stop());
     if (unmute) {
       unmute.addEventListener("click", () => {
-        const { video } = els();
-        if (!video) return;
-        video.muted = false;
-        video.play().catch(() => {});
-        unmute.hidden = true;
-        setStatus("已取消静音");
+        tryUnmute(false).then((ok) => {
+          if (ok) {
+            stopUnmuteAssist();
+            setStatus("已取消静音");
+          }
+        });
       });
     }
     refreshEstimateBandwidth();
