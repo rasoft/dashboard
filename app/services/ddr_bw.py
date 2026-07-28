@@ -160,6 +160,40 @@ def parse_status_raw_multi(
     return {"freq_hz": freq_hz, "clients": clients}
 
 
+def parse_all_unique_clients(text: str) -> dict[str, Any]:
+    """Parse every monitor row; duplicate names (e.g. vdec_4k) keep the first only."""
+    freq_hz = None
+    m = _FREQ_RE.search(text or "")
+    if m:
+        freq_hz = int(m.group(1))
+
+    generic = re.compile(rf"^(?:\S+\s+)?(\S+)\s+{_NUMS}\s*$")
+    clients: dict[str, Any] = {}
+    for raw in (text or "").splitlines():
+        line = raw.replace("\r", "").strip()
+        if not line or line.startswith("Monitor") or line.startswith("------"):
+            continue
+        row = generic.match(line)
+        if not row:
+            continue
+        name = row.group(1)
+        if not name or name.isdigit() or name in clients:
+            continue
+        clients[name] = _row_dict(name, row.groups()[1:], freq_hz)
+
+    return {"freq_hz": freq_hz, "clients": clients}
+
+
+def sum_clients(clients: dict[str, Any]) -> dict[str, int]:
+    """Sum RD/WR/Total across unique clients."""
+    rd = wr = total = 0
+    for row in clients.values():
+        rd += int(row.get("rd_bps") or 0)
+        wr += int(row.get("wr_bps") or 0)
+        total += int(row.get("total_bps") or 0)
+    return {"rd_bps": rd, "wr_bps": wr, "total_bps": total, "name": "total"}
+
+
 def sample(
     targets: list[str] | tuple[str, ...] | None = None,
     target: str | None = None,
@@ -185,10 +219,14 @@ def sample(
         err = (result.stderr or raw or "cat status_raw failed").strip()
         return {"ok": False, "error": err}
 
+    all_parsed = parse_all_unique_clients(raw)
+    all_clients = all_parsed["clients"]
+    total = sum_clients(all_clients)
+
     parsed = parse_status_raw_multi(raw, targets=targets)
     clients = parsed["clients"]
     missing = [t for t in targets if t not in clients]
-    if len(clients) == 0:
+    if len(clients) == 0 and len(all_clients) == 0:
         found = _list_client_names(raw)
         return {
             "ok": False,
@@ -199,13 +237,21 @@ def sample(
             "raw": raw[:800],
             "found": found,
             "clients": {},
+            "total": total,
             "freq_hz": parsed["freq_hz"],
         }
 
+    # Prefer requested targets; fall back to all unique clients for charts.
+    if not clients:
+        clients = {t: all_clients[t] for t in targets if t in all_clients}
+        missing = [t for t in targets if t not in clients]
+
     payload: dict[str, Any] = {
         "ok": True,
-        "freq_hz": parsed["freq_hz"],
+        "freq_hz": all_parsed["freq_hz"] or parsed["freq_hz"],
         "clients": clients,
+        "all_clients": all_clients,
+        "total": total,
         "missing": missing,
     }
     if missing:

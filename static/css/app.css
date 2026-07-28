@@ -539,6 +539,12 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.ddr-meta-total {
+  background: rgba(232, 232, 232, 0.08);
+  border-color: rgba(200, 210, 220, 0.35);
+  color: #e8eef4;
+}
+
 .ddr-meta-gpu {
   background: rgba(43, 182, 115, 0.1);
   border-color: rgba(43, 182, 115, 0.28);

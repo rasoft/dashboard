@@ -135,6 +135,7 @@
         <button type="button" class="btn btn-ghost" id="ddr-clear">清空曲线</button>
       </div>
       <div class="ddr-track-toggles" id="ddr-track-toggles" aria-label="曲线图开关">
+        <button type="button" class="ddr-track-btn" data-track="total" aria-pressed="true">total</button>
         <button type="button" class="ddr-track-btn" data-track="cpu" aria-pressed="true">cpu_a55_main</button>
         <button type="button" class="ddr-track-btn" data-track="gpu" aria-pressed="true">gpu</button>
         <button type="button" class="ddr-track-btn" data-track="vpu" aria-pressed="true">vpu</button>
@@ -146,6 +147,12 @@
         <button type="button" class="ddr-track-btn" data-track="phyeth" aria-pressed="false">phy_eth_dac</button>
       </div>
       <div class="ddr-charts">
+        <section class="ddr-chart-block" data-track="total">
+          <div class="ddr-meta ddr-meta-total" id="ddr-meta-total">total · —</div>
+          <div class="ddr-chart-wrap">
+            <canvas id="ddr-chart-total" aria-label="使能通道带宽总和曲线"></canvas>
+          </div>
+        </section>
         <section class="ddr-chart-block" data-track="cpu">
           <div class="ddr-meta" id="ddr-meta-cpu">等待采样…</div>
           <div class="ddr-chart-wrap">

@@ -5,6 +5,15 @@ window.DdrPanel = (() => {
 
   const TRACKS = [
     {
+      key: "total",
+      target: "total",
+      metaId: "ddr-meta-total",
+      canvasId: "ddr-chart-total",
+      emptyMeta: "total · —",
+      defaultOn: true,
+      synthetic: true,
+    },
+    {
       key: "cpu",
       target: "cpu_a55_main",
       metaId: "ddr-meta-cpu",
@@ -78,7 +87,8 @@ window.DdrPanel = (() => {
     },
   ];
 
-  const TARGETS = TRACKS.map((t) => t.target);
+  const SAMPLE_TRACKS = TRACKS.filter((t) => !t.synthetic);
+  const TARGETS = SAMPLE_TRACKS.map((t) => t.target);
 
   let root = null;
   let charts = {};
@@ -304,9 +314,12 @@ window.DdrPanel = (() => {
   function pushSample(sample) {
     const data = normalizeSample(sample);
     const clients = data.clients || {};
-    const rows = TRACKS.map((t) => ({ track: t, row: clients[t.target] || null }));
+    const sampleRows = SAMPLE_TRACKS.map((t) => ({
+      track: t,
+      row: clients[t.target] || null,
+    }));
 
-    if (rows.every(({ row }) => !row)) {
+    if (sampleRows.every(({ row }) => !row)) {
       const found = Array.isArray(sample.found) ? sample.found.join(", ") : "";
       throw new Error(
         sample.error ||
@@ -317,11 +330,18 @@ window.DdrPanel = (() => {
     }
 
     labels.push(timeLabel());
-    rows.forEach(({ track, row }) => {
+
+    sampleRows.forEach(({ track, row }) => {
       series[`${track.key}Rd`].push(row ? toMbps(row.rd_bps) : null);
       series[`${track.key}Wr`].push(row ? toMbps(row.wr_bps) : null);
       series[`${track.key}Total`].push(row ? toMbps(row.total_bps) : null);
     });
+
+    // Board-wide total: sum of all unique status_raw rows (duplicates excluded server-side).
+    const totalRow = data.total || { rd_bps: 0, wr_bps: 0, total_bps: 0 };
+    series.totalRd.push(toMbps(totalRow.rd_bps));
+    series.totalWr.push(toMbps(totalRow.wr_bps));
+    series.totalTotal.push(toMbps(totalRow.total_bps));
 
     while (labels.length > MAX_POINTS) {
       labels.shift();
@@ -331,7 +351,8 @@ window.DdrPanel = (() => {
     updateCharts();
 
     const nodes = els();
-    rows.forEach(({ track, row }) => {
+    setMetaLine(nodes.meta_total, clientLine("total", totalRow));
+    sampleRows.forEach(({ track, row }) => {
       setMetaLine(nodes[`meta_${track.key}`], clientLine(track.target, row));
     });
   }

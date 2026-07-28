@@ -7,7 +7,7 @@
 - **可拖拽面板框架**：关闭、移动、缩放，允许面板重叠；工作区高度固定，面板可部分拖出但不可全部拖出；每个面板会记住最后一次的大小与位置（含关闭后再打开）
 - **遥控器面板**：经 ADB `input keyevent` / 应用 deep link 发送按键
 - **HDMI 输出监测**：经 MACROSILICON USB3 Video 采集，使用 WebRTC 推送到浏览器
-- **内存带宽面板**：经 ADB 读取 DDR monitor（含 `cpu_a55_main` / `gpu` / `vpu` / `vdec_4k` / `vdec_2k_jpeg` / `emmc_sd` / `usb_pcie` / `phy_eth_dac` 等）并绘制 RD/WR/Total 曲线；可用按钮开关各曲线图（默认显示前三者）
+- **内存带宽面板**：经 ADB 读取 DDR monitor（含全表去重后的 `total` 汇总与各 client 曲线）；可用按钮开关各曲线图（默认显示 total / cpu / gpu / vpu）
 - **HWC层面板**：经 ADB `dumpsys SurfaceFlinger --hwclayers` 按秒刷新，按表格顺序叠画图层（表前列在下、表后列在上；DEVICE 实线 / CLIENT 虚线，alpha 80%）
 - 开始监测后按秒刷新实时网络带宽（WebRTC 收流统计）；未开播时显示预估
 - 打开 HDMI 面板后自动开始播放
