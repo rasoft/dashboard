@@ -4,7 +4,7 @@
 
 ## 功能
 
-- **可拖拽面板框架**：关闭、移动、缩放；每个面板会记住最后一次的大小与位置（含关闭后再打开）
+- **可拖拽面板框架**：关闭、移动、缩放，允许面板重叠；工作区高度固定，面板可部分拖出但不可全部拖出；每个面板会记住最后一次的大小与位置（含关闭后再打开）
 - **遥控器面板**：经 ADB `input keyevent` / 应用 deep link 发送按键
 - **HDMI 输出监测**：经 MACROSILICON USB3 Video 采集，使用 WebRTC 推送到浏览器
 - **内存带宽面板**：经 ADB 读取 DDR monitor（含 `cpu_a55_main` / `gpu` / `vpu` / `vdec_4k` / `vdec_2k_jpeg` / `emmc_sd` / `usb_pcie` / `phy_eth_dac` 等）并绘制 RD/WR/Total 曲线；可用按钮开关各曲线图（默认显示前三者）

@@ -150,13 +150,6 @@ window.DdrPanel = (() => {
     return (Number(bps) / (1024 * 1024)).toFixed(2);
   }
 
-  function formatFreq(hz) {
-    if (!hz) return "—";
-    if (hz >= 1e9) return `${(hz / 1e9).toFixed(2)} GHz`;
-    if (hz >= 1e6) return `${(hz / 1e6).toFixed(0)} MHz`;
-    return `${hz} Hz`;
-  }
-
   function timeLabel(date = new Date()) {
     return date.toLocaleTimeString("zh-CN", {
       hour12: false,
@@ -339,11 +332,7 @@ window.DdrPanel = (() => {
 
     const nodes = els();
     rows.forEach(({ track, row }) => {
-      let text = clientLine(track.target, row);
-      if (track.key === "cpu") {
-        text = `DDR ${formatFreq(data.freq_hz)} · ${text}`;
-      }
-      setMetaLine(nodes[`meta_${track.key}`], text);
+      setMetaLine(nodes[`meta_${track.key}`], clientLine(track.target, row));
     });
   }
 

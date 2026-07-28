@@ -36,14 +36,126 @@ const PANEL_DEFS = {
 
 const STORAGE_KEY = "android-board-dashboard-layout-v2";
 const STORAGE_KEY_LEGACY = "android-board-dashboard-layout-v1";
+const CELL_HEIGHT = 48;
+const GRID_MARGIN = 8;
+/** Minimum cells of a panel that must remain inside the workspace. */
+const MIN_VISIBLE_COLS = 1;
+const MIN_VISIBLE_ROWS = 1;
 
 const Dashboard = (() => {
   let grid = null;
   const openPanels = new Set();
+  let clamping = false;
 
   function cloneTemplate(id) {
     const tpl = document.getElementById(id);
     return tpl.content.cloneNode(true);
+  }
+
+  function availableRows() {
+    const workspace = document.querySelector(".workspace");
+    const height = workspace?.clientHeight || 0;
+    if (height > 40) return Math.max(8, Math.floor(height / CELL_HEIGHT));
+    return Math.max(8, Math.floor(Math.max(480, window.innerHeight - 120) / CELL_HEIGHT));
+  }
+
+  function clampNode(node) {
+    if (!grid || !node?.el) return false;
+    const cols = grid.getColumn() || 12;
+    const rows = availableRows();
+    const def = PANEL_DEFS[node.id];
+
+    let w = Math.max(1, node.w || 1);
+    let h = Math.max(1, node.h || 1);
+    if (def?.lockedSize) {
+      w = def.w;
+      h = def.h;
+    }
+    w = Math.min(w, cols);
+
+    const keepW = Math.min(w, MIN_VISIBLE_COLS);
+    const keepH = Math.min(h, MIN_VISIBLE_ROWS);
+    // Allow hanging off right/bottom; keep x/y >= 0 so GridStack CSS still works.
+    const minX = 0;
+    const maxX = Math.max(0, cols - keepW);
+    const minY = 0;
+    const maxY = Math.max(0, rows - keepH);
+
+    const x = Math.max(minX, Math.min(Number(node.x) || 0, maxX));
+    const y = Math.max(minY, Math.min(Number(node.y) || 0, maxY));
+
+    if (x === node.x && y === node.y && w === node.w && h === node.h) return false;
+    clamping = true;
+    try {
+      grid.update(node.el, { x, y, w, h });
+    } finally {
+      clamping = false;
+    }
+    return true;
+  }
+
+  function clampAllPanels() {
+    if (!grid?.engine?.nodes || clamping) return;
+    [...grid.engine.nodes].forEach((node) => clampNode(node));
+  }
+
+  function installPartialBoundFix() {
+    const engine = grid.engine;
+    if (!engine || engine._partialBoundFixInstalled) return;
+    engine._partialBoundFixInstalled = true;
+
+    engine.nodeBoundFix = function (node, resizing) {
+      if (node.maxW) node.w = Math.min(node.w, node.maxW);
+      if (node.maxH) node.h = Math.min(node.h, node.maxH);
+      if (node.minW && node.minW <= this.column) node.w = Math.max(node.w, node.minW);
+      if (node.minH) node.h = Math.max(node.h, node.minH);
+      if (node.w > this.column) node.w = this.column;
+      if (node.w < 1) node.w = 1;
+      if (node.h < 1) node.h = 1;
+
+      // Keep at least one cell inside the visible workspace; allow overhang past right/bottom.
+      const cols = this.column || 12;
+      const rows = availableRows();
+      const keepW = Math.min(node.w, MIN_VISIBLE_COLS);
+      const keepH = Math.min(node.h, MIN_VISIBLE_ROWS);
+      if (node.x < 0) node.x = 0;
+      if (node.y < 0) node.y = 0;
+      if (node.x > cols - keepW) node.x = Math.max(0, cols - keepW);
+      if (node.y > rows - keepH) node.y = Math.max(0, rows - keepH);
+      // Intentionally do NOT force x+w <= cols or y+h <= rows (partial overhang).
+      return this;
+    };
+  }
+
+  function applyWorkspaceBounds() {
+    if (!grid) return;
+    grid.opts.maxRow = 0;
+    if (grid.engine) grid.engine.maxRow = 0;
+    installPartialBoundFix();
+    clampAllPanels();
+  }
+
+  function sanitizeGeometry(panelId, geo) {
+    const def = PANEL_DEFS[panelId];
+    const cols = 12;
+    const rows = availableRows();
+    let x = Number(geo.x);
+    let y = Number(geo.y);
+    let w = Number(geo.w);
+    let h = Number(geo.h);
+    if (!Number.isFinite(x)) x = def.x;
+    if (!Number.isFinite(y)) y = def.y;
+    if (!Number.isFinite(w) || w < 1) w = def.w;
+    if (!Number.isFinite(h) || h < 1) h = def.h;
+    if (def.lockedSize) {
+      w = def.w;
+      h = def.h;
+    }
+    w = Math.min(Math.max(1, w), cols);
+    h = Math.max(1, h);
+    x = Math.max(0, Math.min(x, cols - 1));
+    y = Math.max(0, Math.min(y, Math.max(0, rows - 1)));
+    return { x, y, w, h };
   }
 
   function defaultStore() {
@@ -97,19 +209,19 @@ const Dashboard = (() => {
     const saved = loadStore().layouts[panelId] || {};
     // Size-locked panels always use definition size; only position is restored.
     if (def.lockedSize) {
-      return {
+      return sanitizeGeometry(panelId, {
         x: opts.x ?? saved.x ?? def.x,
         y: opts.y ?? saved.y ?? def.y,
         w: def.w,
         h: def.h,
-      };
+      });
     }
-    return {
+    return sanitizeGeometry(panelId, {
       x: opts.x ?? saved.x ?? def.x,
       y: opts.y ?? saved.y ?? def.y,
       w: opts.w ?? saved.w ?? def.w,
       h: opts.h ?? saved.h ?? def.h,
-    };
+    });
   }
 
   function buildPanelContent(panelId) {
@@ -130,6 +242,12 @@ const Dashboard = (() => {
     panel.querySelector('[data-action="close"]').addEventListener("click", (e) => {
       e.stopPropagation();
       closePanel(panelId);
+    });
+
+    panel.querySelector(".panel-header").addEventListener("pointerdown", (e) => {
+      if (e.target.closest('[data-action="close"]')) return;
+      const item = panel.closest(".grid-stack-item");
+      bringToFront(item);
     });
 
     return panel;
@@ -163,6 +281,9 @@ const Dashboard = (() => {
     if (panelId === "remote" && window.RemotePanel) window.RemotePanel.mount(panelEl);
     if (panelId === "hdmi" && window.HdmiPanel) window.HdmiPanel.mount(panelEl);
     if (panelId === "ddr" && window.DdrPanel) window.DdrPanel.mount(panelEl);
+
+    const node = grid.engine.nodes.find((n) => n.id === panelId);
+    if (node) clampNode(node);
     persist();
   }
 
@@ -214,9 +335,10 @@ const Dashboard = (() => {
 
   function restore() {
     const store = loadStore();
-    const toOpen = (store.open || []).filter((id) => PANEL_DEFS[id]);
-    const panels = toOpen.length ? toOpen : Object.keys(PANEL_DEFS);
-    panels.forEach((id) => addPanel(id));
+    let toOpen = (store.open || []).filter((id) => PANEL_DEFS[id]);
+    // If layout was corrupted to an empty open list, fall back to all panels.
+    if (!toOpen.length) toOpen = Object.keys(PANEL_DEFS);
+    toOpen.forEach((id) => addPanel(id));
   }
 
   async function refreshStatus() {
@@ -272,19 +394,58 @@ const Dashboard = (() => {
     });
   }
 
+  function bringToFront(el) {
+    if (!el) return;
+    const host = document.getElementById("dashboard-grid");
+    if (!host) return;
+    let maxZ = 1;
+    host.querySelectorAll(".grid-stack-item").forEach((item) => {
+      const z = Number.parseInt(item.style.zIndex || "1", 10);
+      if (Number.isFinite(z) && z > maxZ) maxZ = z;
+    });
+    el.style.zIndex = String(maxZ + 1);
+  }
+
   function init() {
     grid = GridStack.init({
-      cellHeight: 48,
-      margin: 8,
+      cellHeight: CELL_HEIGHT,
+      margin: GRID_MARGIN,
       float: true,
+      // No maxRow: allow partial overhang; we clamp so some cells stay visible.
       draggable: { handle: ".panel-header" },
       resizable: { handles: "e, se, s, sw, w" },
     });
 
-    grid.on("change", () => persist());
+    // GridStack has no first-class overlap option; disable collision resolution.
+    if (grid.engine && typeof grid.engine._fixCollisions === "function") {
+      grid.engine._fixCollisions = function () {};
+    }
+    installPartialBoundFix();
+
+    grid.on("change", () => {
+      if (clamping) return;
+      persist();
+    });
+    grid.on("dragstop", (_event, el) => {
+      const node = el?.gridstackNode;
+      if (node) clampNode(node);
+      persist();
+    });
+    grid.on("resizestop", (_event, el) => {
+      const node = el?.gridstackNode;
+      if (node) clampNode(node);
+      persist();
+    });
+    grid.on("dragstart", (_event, el) => bringToFront(el));
+    grid.on("resizestart", (_event, el) => bringToFront(el));
     setupAddMenu();
     document.getElementById("btn-refresh-status").addEventListener("click", refreshStatus);
+    window.addEventListener("resize", () => {
+      // Defer until layout settles so workspace height is non-zero.
+      requestAnimationFrame(() => applyWorkspaceBounds());
+    });
     restore();
+    requestAnimationFrame(() => applyWorkspaceBounds());
     refreshStatus();
     setInterval(refreshStatus, 8000);
   }
