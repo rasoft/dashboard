@@ -128,7 +128,7 @@ window.HwcPanel = (() => {
       const fontSize = Math.max(9, Math.min(12, Math.floor(Math.min(w, h) / 8)));
       ctx.font = `600 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
       ctx.textBaseline = "top";
-      const tl = `(${left},${top})`;
+      const tl = `[${left},${top}]`;
       const br = `(${right},${bottom})`;
       const tlW = ctx.measureText(tl).width;
       const brW = ctx.measureText(br).width;
