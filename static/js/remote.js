@@ -1,5 +1,42 @@
 window.RemotePanel = (() => {
-  async function sendKey(key, feedbackEl) {
+  let activeRoot = null;
+  let feedbackEl = null;
+  let sending = false;
+  let keyHandler = null;
+
+  const KEYBOARD_MAP = {
+    ArrowUp: "DPAD_UP",
+    ArrowDown: "DPAD_DOWN",
+    ArrowLeft: "DPAD_LEFT",
+    ArrowRight: "DPAD_RIGHT",
+    Enter: "DPAD_CENTER",
+    NumpadEnter: "DPAD_CENTER",
+    Backspace: "BACK",
+    // Media keys (when the OS/browser exposes them)
+    AudioVolumeUp: "VOLUME_UP",
+    AudioVolumeDown: "VOLUME_DOWN",
+    VolumeUp: "VOLUME_UP",
+    VolumeDown: "VOLUME_DOWN",
+    // Reliable fallbacks for volume on normal keyboards
+    PageUp: "VOLUME_UP",
+    PageDown: "VOLUME_DOWN",
+    "=": "VOLUME_UP",
+    "+": "VOLUME_UP",
+    "-": "VOLUME_DOWN",
+    "_": "VOLUME_DOWN",
+  };
+
+  function isTypingTarget(el) {
+    if (!el || !(el instanceof Element)) return false;
+    const tag = el.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    return el.isContentEditable;
+  }
+
+  async function sendKey(key) {
+    if (!feedbackEl) return;
+    if (sending) return;
+    sending = true;
     feedbackEl.textContent = `发送 ${key}…`;
     feedbackEl.classList.remove("error");
     try {
@@ -18,18 +55,57 @@ window.RemotePanel = (() => {
     } catch (err) {
       feedbackEl.textContent = String(err);
       feedbackEl.classList.add("error");
+    } finally {
+      sending = false;
     }
+  }
+
+  function onKeyDown(e) {
+    if (!activeRoot || !document.body.contains(activeRoot)) return;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (isTypingTarget(e.target)) return;
+
+    const mapped = KEYBOARD_MAP[e.key];
+    if (!mapped) return;
+
+    e.preventDefault();
+    if (e.repeat) return; // avoid key-repeat flooding adb
+    sendKey(mapped);
+  }
+
+  function bindKeyboard() {
+    if (keyHandler) return;
+    keyHandler = onKeyDown;
+    window.addEventListener("keydown", keyHandler, true);
+  }
+
+  function unbindKeyboard() {
+    if (!keyHandler) return;
+    window.removeEventListener("keydown", keyHandler, true);
+    keyHandler = null;
   }
 
   function mount(panelEl) {
     const root = panelEl.querySelector(".remote");
-    if (!root || root.dataset.bound === "1") return;
-    root.dataset.bound = "1";
-    const feedback = root.querySelector(".remote-feedback");
-    root.querySelectorAll("button[data-key]").forEach((btn) => {
-      btn.addEventListener("click", () => sendKey(btn.dataset.key, feedback));
-    });
+    if (!root) return;
+    feedbackEl = root.querySelector(".remote-feedback");
+    activeRoot = root;
+
+    if (root.dataset.bound !== "1") {
+      root.dataset.bound = "1";
+      root.querySelectorAll("button[data-key]").forEach((btn) => {
+        btn.addEventListener("click", () => sendKey(btn.dataset.key));
+      });
+    }
+
+    bindKeyboard();
   }
 
-  return { mount };
+  function unmount() {
+    activeRoot = null;
+    feedbackEl = null;
+    unbindKeyboard();
+  }
+
+  return { mount, unmount, sendKey };
 })();

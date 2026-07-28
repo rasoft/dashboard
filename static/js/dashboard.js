@@ -157,6 +157,9 @@ const Dashboard = (() => {
     if (panelId === "hdmi" && window.HdmiPanel) {
       window.HdmiPanel.stop().catch(() => {});
     }
+    if (panelId === "remote" && window.RemotePanel?.unmount) {
+      window.RemotePanel.unmount();
+    }
 
     // Remember last size/position before removing from the grid.
     const node = grid.engine.nodes.find((n) => n.id === panelId);
