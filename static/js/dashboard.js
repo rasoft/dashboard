@@ -32,6 +32,16 @@ const PANEL_DEFS = {
     x: 3,
     y: 14,
   },
+  hwc: {
+    id: "hwc",
+    title: "HWC层",
+    w: 6,
+    h: 12,
+    minW: 4,
+    minH: 8,
+    x: 0,
+    y: 18,
+  },
 };
 
 const STORAGE_KEY = "android-board-dashboard-layout-v2";
@@ -237,6 +247,8 @@ const Dashboard = (() => {
       body.appendChild(cloneTemplate("tpl-hdmi"));
     } else if (panelId === "ddr") {
       body.appendChild(cloneTemplate("tpl-ddr"));
+    } else if (panelId === "hwc") {
+      body.appendChild(cloneTemplate("tpl-hwc"));
     }
 
     panel.querySelector('[data-action="close"]').addEventListener("click", (e) => {
@@ -281,6 +293,7 @@ const Dashboard = (() => {
     if (panelId === "remote" && window.RemotePanel) window.RemotePanel.mount(panelEl);
     if (panelId === "hdmi" && window.HdmiPanel) window.HdmiPanel.mount(panelEl);
     if (panelId === "ddr" && window.DdrPanel) window.DdrPanel.mount(panelEl);
+    if (panelId === "hwc" && window.HwcPanel) window.HwcPanel.mount(panelEl);
 
     const node = grid.engine.nodes.find((n) => n.id === panelId);
     if (node) clampNode(node);
@@ -296,6 +309,9 @@ const Dashboard = (() => {
     }
     if (panelId === "ddr" && window.DdrPanel?.unmount) {
       window.DdrPanel.unmount();
+    }
+    if (panelId === "hwc" && window.HwcPanel?.unmount) {
+      window.HwcPanel.unmount();
     }
 
     // Remember last size/position before removing from the grid.

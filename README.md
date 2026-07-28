@@ -8,9 +8,11 @@
 - **遥控器面板**：经 ADB `input keyevent` / 应用 deep link 发送按键
 - **HDMI 输出监测**：经 MACROSILICON USB3 Video 采集，使用 WebRTC 推送到浏览器
 - **内存带宽面板**：经 ADB 读取 DDR monitor（含 `cpu_a55_main` / `gpu` / `vpu` / `vdec_4k` / `vdec_2k_jpeg` / `emmc_sd` / `usb_pcie` / `phy_eth_dac` 等）并绘制 RD/WR/Total 曲线；可用按钮开关各曲线图（默认显示前三者）
+- **HWC层面板**：经 ADB `dumpsys SurfaceFlinger --hwclayers` 按秒刷新，按表格顺序叠画图层（表前列在下、表后列在上；DEVICE 实线 / CLIENT 虚线，alpha 80%）
 - 开始监测后按秒刷新实时网络带宽（WebRTC 收流统计）；未开播时显示预估
 - 打开 HDMI 面板后自动开始播放
 - 打开内存带宽面板后会自动启用 debugfs monitor 并按秒采样
+- 打开 HWC层面板后自动按秒刷新
 
 串口（FTDI）设备发现接口已预留：`GET /api/serial/ports`，终端面板未在首期实现。
 
@@ -72,6 +74,7 @@ http://<工作站IP>:5000
 4. **遥控器**：点击按键即可发送
 5. **HDMI**：打开面板后默认以 1920×1080 自动开始监测；可改分辨率或点「停止」后手动再开
 6. **内存带宽**：打开面板后自动执行 `adb root`、挂载 debugfs、启用 DDR monitor，并每秒采样各 client 绘制曲线（默认显示 `cpu_a55_main` / `gpu` / `vpu`）
+7. **HWC层**：打开面板后每秒读取 SurfaceFlinger HWC layers，按表格顺序叠画（最后一行在最上层）并在下方列出图例
 
 同一时间只允许一路 HDMI WebRTC 会话。
 
@@ -83,6 +86,7 @@ http://<工作站IP>:5000
 - `GET /api/hdmi/bandwidth?width=1920&height=1080&fps=30&audio=1`
 - `POST /api/ddr/enable` — 启用 DDR debugfs monitor
 - `GET /api/ddr/sample?targets=cpu_a55_main,gpu,vpu,vdec_4k,vdec_2k_jpeg,emmc_sd,usb_pcie,phy_eth_dac` — 读取一次内存带宽
+- `GET /api/hwc/layers` — 读取 SurfaceFlinger HWC 图层
 - `GET /api/serial/ports`
 
 WebRTC 信令（Socket.IO）：`hdmi:offer` / `hdmi:answer` / `hdmi:ice` / `hdmi:stop`
@@ -92,7 +96,7 @@ WebRTC 信令（Socket.IO）：`hdmi:offer` / `hdmi:answer` / `hdmi:ice` / `hdmi
 ```text
 app/
   routes/       # HTTP 页面与 REST API
-  services/     # adb、capture、bandwidth、webrtc、ddr_bw
+  services/     # adb、capture、bandwidth、webrtc、ddr_bw、hwc_layers
   signaling.py  # Socket.IO 信令
 static/         # CSS / JS
 templates/      # 单页 Dashboard

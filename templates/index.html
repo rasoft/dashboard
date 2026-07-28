@@ -35,6 +35,7 @@
           <button type="button" data-panel="remote">遥控器</button>
           <button type="button" data-panel="hdmi">HDMI 输出监测</button>
           <button type="button" data-panel="ddr">内存带宽</button>
+          <button type="button" data-panel="hwc">HWC层</button>
         </div>
       </div>
       <button type="button" class="btn btn-ghost" id="btn-refresh-status">刷新状态</button>
@@ -204,12 +205,27 @@
     </div>
   </template>
 
+  <template id="tpl-hwc">
+    <div class="hwc">
+      <div class="hwc-meta" id="hwc-meta">等待采样…</div>
+      <div class="hwc-stage" id="hwc-stage">
+        <canvas id="hwc-canvas" aria-label="HWC 图层平面"></canvas>
+      </div>
+      <div class="hwc-legend-wrap">
+        <div class="hwc-legend-title">图例 · 实线 DEVICE / 虚线 CLIENT · alpha 80%</div>
+        <div class="hwc-legend" id="hwc-legend"></div>
+      </div>
+      <p class="hwc-status" id="hwc-status">等待操作</p>
+    </div>
+  </template>
+
   <script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <script src="{{ url_for('static', filename='js/remote.js') }}"></script>
   <script src="{{ url_for('static', filename='js/hdmi.js') }}"></script>
   <script src="{{ url_for('static', filename='js/ddr.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/hwc.js') }}"></script>
   <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>
