@@ -15,7 +15,11 @@ logger = logging.getLogger(__name__)
 
 
 def _emit_to(event: str, data, to: str | None = None) -> None:
-    socketio.emit(event, data, to=to)
+    # Safe across the WebRTC asyncio thread and Flask worker threads.
+    try:
+        socketio.emit(event, data, to=to)
+    except Exception:  # noqa: BLE001
+        logger.exception("socketio emit failed for %s", event)
 
 
 webrtc_manager.set_emitter(_emit_to)
@@ -29,7 +33,7 @@ def on_connect():
 
 @socketio.on("disconnect")
 def on_disconnect():
-    if webrtc_manager.active_sid == request.sid:
+    if webrtc_manager.has_session(request.sid):
         webrtc_manager.stop(request.sid)
 
 
@@ -37,10 +41,6 @@ def on_disconnect():
 def on_hdmi_offer(data):
     data = data or {}
     sid = request.sid
-
-    if webrtc_manager.is_busy(sid):
-        emit("hdmi:error", {"error": "another HDMI session is already active"})
-        return
 
     status = capture.get_capture_status()
     if not status.get("available") or not status.get("video"):
@@ -79,13 +79,26 @@ def on_hdmi_offer(data):
         fps=fps,
         audio=audio,
         audio_device=audio_device,
+        request_host=request.host,
     )
 
     if not result.get("ok"):
         emit("hdmi:error", {"error": result.get("error", "offer failed")})
         return
 
-    emit("hdmi:answer", {"sdp": result["sdp"], "type": result["type"]})
+    emit(
+        "hdmi:answer",
+        {
+            "sdp": result["sdp"],
+            "type": result["type"],
+            "subscribers": result.get("subscribers"),
+        },
+    )
+
+    # Server → client ICE trickle (candidates already in SDP; trickle helps
+    # browsers that apply remote candidates via the signaling path).
+    for ice_msg in result.get("iceCandidates") or []:
+        emit("hdmi:ice", ice_msg)
 
 
 @socketio.on("hdmi:ice")

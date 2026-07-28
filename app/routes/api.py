@@ -13,7 +13,10 @@ def status():
             "adb": adb.get_status(),
             "hdmi": capture.get_capture_status(),
             "serial": {"ports": capture.discover_serial_ports()},
-            "hdmi_session": {"active": webrtc_manager.active_sid is not None},
+            "hdmi_session": {
+                "active": webrtc_manager.subscriber_count > 0,
+                "subscribers": webrtc_manager.subscriber_count,
+            },
         }
     )
 
@@ -35,6 +38,26 @@ def remote_key():
 @api_bp.get("/hdmi/devices")
 def hdmi_devices():
     return jsonify(capture.get_capture_status())
+
+
+@api_bp.get("/hdmi/ice-servers")
+def hdmi_ice_servers():
+    from app.services.webrtc import (
+        ice_network_info,
+        ice_servers_for_client,
+        resolve_announce_ip,
+    )
+
+    info = ice_network_info()
+    # Reflect what this HTTP client would get as announce IP.
+    info["announceIpResolved"] = resolve_announce_ip(request.host) or None
+    return jsonify(
+        {
+            "ok": True,
+            "iceServers": ice_servers_for_client(),
+            **info,
+        }
+    )
 
 
 @api_bp.get("/hdmi/bandwidth")

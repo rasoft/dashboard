@@ -6,7 +6,7 @@
 
 - **可拖拽面板框架**：关闭、移动、缩放，允许面板重叠；工作区高度固定，面板可部分拖出但不可全部拖出；每个面板会记住最后一次的大小与位置（含关闭后再打开）
 - **遥控器面板**：经 ADB `input keyevent` / 应用 deep link 发送按键
-- **HDMI 输出监测**：经 MACROSILICON USB3 Video 采集，使用 WebRTC 推送到浏览器
+- **HDMI 输出监测**：经 MACROSILICON USB3 Video 采集，使用 WebRTC 推送到浏览器（一路采集、多浏览器订阅）
 - **内存带宽面板**：经 ADB 读取 DDR monitor（含全表去重后的 `total` 汇总与各 client 曲线）；可用按钮开关各曲线图（默认显示 total / cpu / gpu / vpu）
 - **Sf-HWC层面板**：经 ADB `dumpsys SurfaceFlinger --hwclayers` 按秒刷新，按表格顺序叠画图层（表前列在下、表后列在上；DEVICE 实线 / CLIENT 虚线，alpha 80%）
 - **Sf-事件面板**：经 ADB `dumpsys SurfaceFlinger --events` 按秒采样 `mWorkDuration` / `mReadyDuration` / `last vsync time` 并绘制曲线
@@ -67,6 +67,14 @@ http://<工作站IP>:5000
 | `ADB_PATH` | adb 可执行文件 | `adb` |
 | `ADB_SERIAL` | 指定设备序列号 | 空（取第一台 online 设备） |
 | `SECRET_KEY` | Flask/SocketIO secret | 开发默认值 |
+| `WEBRTC_STUN_URLS` | WebRTC STUN（逗号分隔） | `stun:stun.l.google.com:19302` |
+| `WEBRTC_TURN_URLS` | WebRTC TURN（可选，逗号分隔） | 空 |
+| `WEBRTC_TURN_USERNAME` | TURN 用户名 | 空 |
+| `WEBRTC_TURN_CREDENTIAL` | TURN 密码 | 空 |
+| `WEBRTC_UDP_PORT_MIN` | ICE/RTP 本机 UDP 端口下限（含）；`0` 关闭限制 | `40000` |
+| `WEBRTC_UDP_PORT_MAX` | ICE/RTP 本机 UDP 端口上限（含）；`0` 关闭限制 | `40199` |
+| `WEBRTC_ANNOUNCE_IP` | 强制 ICE 宣告地址；**空则自动用浏览器请求的 Host**（如 `192.168.111.79`） | 空（自动） |
+| `WEBRTC_ANNOUNCE_REPLACE` | 仅改写这些本机 IP（逗号分隔）；空=改写全部 host 候选 | 空 |
 
 ## 使用说明
 
@@ -79,13 +87,14 @@ http://<工作站IP>:5000
 7. **Sf-HWC层**：打开面板后每秒读取 SurfaceFlinger HWC layers，按表格顺序叠画（最后一行在最上层）并在下方列出图例
 8. **Sf-事件**：打开面板后每秒读取 SurfaceFlinger events，绘制 work / ready / last vsync 时序曲线
 
-同一时间只允许一路 HDMI WebRTC 会话。
+同一时间可多浏览器订阅同一路 HDMI 采集（一路采集、多路转发）。
 
 ## API 摘要
 
 - `GET /api/status` — ADB / HDMI / 串口概览
 - `POST /api/remote/key` — `{ "key": "DPAD_UP" }`
 - `GET /api/hdmi/devices`
+- `GET /api/hdmi/ice-servers` — 浏览器/服务端共用的 STUN/TURN 配置
 - `GET /api/hdmi/bandwidth?width=1920&height=1080&fps=30&audio=1`
 - `POST /api/ddr/enable` — 启用 DDR debugfs monitor
 - `GET /api/ddr/sample?targets=cpu_a55_main,gpu,vpu,vdec_4k,vdec_2k_jpeg,emmc_sd,usb_pcie,phy_eth_dac` — 读取一次内存带宽
@@ -113,6 +122,9 @@ run.py
 - 若提示 `Device or resource busy`：确认没有其他进程占用 `/dev/video0`，然后重启 Dashboard。
 - 画面全黑但连接成功：检查开发板 HDMI 是否已接到采集卡、输入源是否有信号。
 - 面板状态会显示 ICE / PeerConnection 状态；信令需先连通再发 Offer。
+- **外网/DMZ 能开页面但无音视频**：原先服务端只宣告局域网 ICE 候选。现已默认启用 STUN；请重启 Dashboard，并用公网地址访问。若仍失败（对称 NAT），自建 TURN 并设置 `WEBRTC_TURN_*`。
+- **跨网段能开页面但 WebRTC 为 closed**：信令走 TCP:5000，媒体走 UDP。默认将服务端 ICE UDP 限制在 `40000-40199`，请在中间防火墙放行到 Dashboard 主机的该 UDP 范围（可用 `WEBRTC_UDP_PORT_MIN/MAX` 调整）。Answer 后服务端会经 `hdmi:ice` trickle 候选。
+- **经 DNAT/VIP 访问（例如浏览器打开 `192.168.111.79`，主机实为 `192.168.166.66`）**：默认会把 ICE 候选改写成请求 `Host`（无需再设 `WEBRTC_ANNOUNCE_IP`）。仍须保证网关上 **UDP 40000-40199** 与 TCP 5000 一样 DNAT 到实机。若 Host 不可靠，可显式设置 `WEBRTC_ANNOUNCE_IP`。
 - 若 `Ctrl+C` 后终端不回显输入：执行 `stty sane`（或 `reset`）。新版本退出时会自动恢复。
 
 ## 后续扩展

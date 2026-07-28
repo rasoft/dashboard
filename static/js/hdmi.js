@@ -287,12 +287,16 @@ window.HdmiPanel = (() => {
   }
 
   async function applyRemoteIce(msg) {
-    if (!pc || !msg?.candidate) return;
-    const candidate = new RTCIceCandidate({
-      candidate: msg.candidate,
-      sdpMid: msg.sdpMid,
-      sdpMLineIndex: msg.sdpMLineIndex,
-    });
+    if (!pc || !msg) return;
+    // Empty / missing candidate => end-of-candidates for this m-line.
+    const isEnd = !msg.candidate;
+    const candidate = isEnd
+      ? null
+      : new RTCIceCandidate({
+          candidate: msg.candidate,
+          sdpMid: msg.sdpMid,
+          sdpMLineIndex: msg.sdpMLineIndex,
+        });
     if (!remoteDescriptionSet) {
       pendingRemoteIce.push(candidate);
       return;
@@ -398,6 +402,19 @@ window.HdmiPanel = (() => {
     }
   }
 
+  async function loadIceServers() {
+    try {
+      const res = await fetch("/api/hdmi/ice-servers");
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.iceServers) && data.iceServers.length) {
+        return data.iceServers;
+      }
+    } catch (err) {
+      console.warn("load ice servers", err);
+    }
+    return [{ urls: "stun:stun.l.google.com:19302" }];
+  }
+
   async function start() {
     if (starting) return;
     starting = true;
@@ -424,9 +441,8 @@ window.HdmiPanel = (() => {
       return;
     }
 
-    pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    });
+    const iceServers = await loadIceServers();
+    pc = new RTCPeerConnection({ iceServers });
 
     pc.addTransceiver("video", { direction: "recvonly" });
     if (enableAudio) {
