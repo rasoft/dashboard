@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import fractions
 import logging
 import os
 import subprocess
 import threading
+import time
 from typing import Any, Callable, Optional
 
 import numpy as np
-from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
-from aiortc.contrib.media import MediaPlayer, MediaRelay
+from aiortc import AudioStreamTrack, RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from aiortc.mediastreams import MediaStreamError
 from aiortc.sdp import candidate_from_sdp
-from av import VideoFrame
+from av import AudioFrame, VideoFrame
 
 logger = logging.getLogger(__name__)
 
@@ -152,17 +153,144 @@ class FFmpegV4L2Track(VideoStreamTrack):
             pass
 
 
-def _open_alsa_player(audio_device: str) -> Optional[MediaPlayer]:
-    try:
-        player = MediaPlayer(audio_device, format="alsa")
-        if player.audio is None:
-            if player.video:
-                player.video.stop()
-            return None
-        return player
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("audio capture unavailable (%s): %s", audio_device, exc)
-        return None
+class FFmpegAlsaTrack(AudioStreamTrack):
+    """Capture HDMI/USB audio via ffmpeg ALSA (avoids broken PyAV bundled alsa.conf)."""
+
+    def __init__(self, device: str, sample_rate: int = 48000, channels: int = 2):
+        super().__init__()
+        self.device = device
+        self.sample_rate = sample_rate
+        self.channels = channels
+        self._samples_per_frame = int(sample_rate * 0.02)  # 20 ms packets
+        self._frame_bytes = self._samples_per_frame * channels * 2
+        self._proc: Optional[subprocess.Popen[bytes]] = None
+        self._stderr_thread: Optional[threading.Thread] = None
+        self._stopped = False
+        self._start_lock = threading.Lock()
+        self._start: Optional[float] = None
+        self._timestamp = 0
+
+    def _spawn(self) -> None:
+        with self._start_lock:
+            if self._proc is not None or self._stopped:
+                return
+            # Prefer plughw for resampling/format conversion when given hw:X,Y
+            alsa_dev = self.device
+            if alsa_dev.startswith("hw:"):
+                alsa_dev = "plug" + alsa_dev
+            cmd = [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "warning",
+                "-fflags",
+                "nobuffer",
+                "-f",
+                "alsa",
+                "-ac",
+                str(self.channels),
+                "-ar",
+                str(self.sample_rate),
+                "-i",
+                alsa_dev,
+                "-f",
+                "s16le",
+                "-acodec",
+                "pcm_s16le",
+                "-ac",
+                str(self.channels),
+                "-ar",
+                str(self.sample_rate),
+                "pipe:1",
+            ]
+            logger.info("starting audio capture: %s", " ".join(cmd))
+            self._proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=self._frame_bytes * 8,
+            )
+
+            def _drain_stderr() -> None:
+                assert self._proc is not None and self._proc.stderr is not None
+                for line in iter(self._proc.stderr.readline, b""):
+                    text = line.decode("utf-8", errors="ignore").strip()
+                    if text:
+                        logger.warning("ffmpeg-audio: %s", text)
+
+            self._stderr_thread = threading.Thread(
+                target=_drain_stderr, name="ffmpeg-alsa-stderr", daemon=True
+            )
+            self._stderr_thread.start()
+
+    def _read_exact(self) -> bytes:
+        self._spawn()
+        assert self._proc is not None and self._proc.stdout is not None
+        buf = bytearray()
+        while len(buf) < self._frame_bytes:
+            if self._stopped:
+                raise MediaStreamError("Track ended")
+            chunk = self._proc.stdout.read(self._frame_bytes - len(buf))
+            if not chunk:
+                code = self._proc.poll()
+                raise MediaStreamError(
+                    f"ffmpeg audio stdout closed (exit={code}) device={self.device}"
+                )
+            buf.extend(chunk)
+        return bytes(buf)
+
+    async def recv(self) -> AudioFrame:
+        if self._stopped or self.readyState != "live":
+            raise MediaStreamError("Track ended")
+
+        if self._start is None:
+            self._start = time.time()
+            self._timestamp = 0
+        else:
+            self._timestamp += self._samples_per_frame
+            wait = self._start + (self._timestamp / self.sample_rate) - time.time()
+            if wait > 0:
+                await asyncio.sleep(wait)
+
+        loop = asyncio.get_running_loop()
+        try:
+            data = await loop.run_in_executor(None, self._read_exact)
+        except MediaStreamError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("audio read failed: %s", exc)
+            data = b"\x00" * self._frame_bytes
+
+        layout = "stereo" if self.channels == 2 else "mono"
+        frame = AudioFrame(format="s16", layout=layout, samples=self._samples_per_frame)
+        frame.planes[0].update(data)
+        frame.sample_rate = self.sample_rate
+        frame.pts = self._timestamp
+        frame.time_base = fractions.Fraction(1, self.sample_rate)
+        return frame
+
+    def stop(self) -> None:
+        self._stopped = True
+        proc = self._proc
+        self._proc = None
+        if proc is not None:
+            try:
+                if proc.stdout:
+                    proc.stdout.close()
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                proc.terminate()
+                proc.wait(timeout=2)
+            except Exception:  # noqa: BLE001
+                try:
+                    proc.kill()
+                except Exception:  # noqa: BLE001
+                    pass
+        try:
+            super().stop()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 class WebRTCManager:
@@ -173,8 +301,7 @@ class WebRTCManager:
         self._thread: Optional[threading.Thread] = None
         self._pc: Optional[RTCPeerConnection] = None
         self._video_track: Optional[FFmpegV4L2Track] = None
-        self._audio_player: Optional[MediaPlayer] = None
-        self._relay: Optional[MediaRelay] = None
+        self._audio_track: Optional[FFmpegAlsaTrack] = None
         self._active_sid: Optional[str] = None
         self._reserving_sid: Optional[str] = None
         self._pending_ice: list[dict[str, Any]] = []
@@ -321,13 +448,14 @@ class WebRTCManager:
             pc.addTrack(video_track)
 
             if audio and audio_device:
-                audio_player = await asyncio.get_running_loop().run_in_executor(
-                    None, lambda: _open_alsa_player(audio_device)
-                )
-                self._audio_player = audio_player
-                if audio_player and audio_player.audio:
-                    self._relay = MediaRelay()
-                    pc.addTrack(self._relay.subscribe(audio_player.audio))
+                try:
+                    audio_track = FFmpegAlsaTrack(audio_device)
+                    self._audio_track = audio_track
+                    pc.addTrack(audio_track)
+                    logger.info("audio track added for %s", audio_device)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("failed to start audio track (%s): %s", audio_device, exc)
+                    self._audio_track = None
 
             offer = RTCSessionDescription(sdp=sdp, type=type_)
             await pc.setRemoteDescription(offer)
@@ -393,16 +521,12 @@ class WebRTCManager:
                 pass
             self._video_track = None
 
-        if self._audio_player is not None:
+        if self._audio_track is not None:
             try:
-                if self._audio_player.audio:
-                    self._audio_player.audio.stop()
-                if self._audio_player.video:
-                    self._audio_player.video.stop()
+                self._audio_track.stop()
             except Exception:  # noqa: BLE001
                 pass
-            self._audio_player = None
-        self._relay = None
+            self._audio_track = None
 
         if self._pc is not None:
             try:

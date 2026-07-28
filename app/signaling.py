@@ -59,7 +59,9 @@ def on_hdmi_offer(data):
     video_device = status["video"]["device"]
     audio_device = None
     if audio and status.get("audio"):
-        audio_device = status["audio"]["alsa"]
+        # Prefer plughw for ffmpeg format conversion.
+        audio_info = status["audio"]
+        audio_device = audio_info.get("plughw") or audio_info.get("alsa")
 
     sdp = data.get("sdp")
     type_ = data.get("type", "offer")

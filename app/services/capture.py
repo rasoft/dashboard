@@ -121,6 +121,7 @@ def list_alsa_capture() -> list[dict[str, Any]]:
         card, card_id, card_name, device, dev_id, dev_name = match.groups()
         label = f"{card_name.strip()} {dev_name.strip()}"
         alsa = f"hw:{card},{device}"
+        plughw = f"plughw:{card},{device}"
         matched = _name_matches(label, filters) or _name_matches(card_name, filters)
         # HDMI capture cards often show as USB Audio near MACROSILICON
         if not matched and ("USB" in label.upper() or "AUDIO" in label.upper()):
@@ -131,6 +132,7 @@ def list_alsa_capture() -> list[dict[str, Any]]:
                 "card": int(card),
                 "device": int(device),
                 "alsa": alsa,
+                "plughw": plughw,
                 "matched": matched,
             }
         )

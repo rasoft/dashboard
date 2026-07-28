@@ -14,6 +14,7 @@ window.HdmiPanel = (() => {
       audio: root.querySelector("#hdmi-audio"),
       start: root.querySelector("#hdmi-start"),
       stop: root.querySelector("#hdmi-stop"),
+      unmute: root.querySelector("#hdmi-unmute"),
       bandwidth: root.querySelector("#hdmi-bandwidth"),
       video: root.querySelector("#hdmi-video"),
       overlay: root.querySelector("#hdmi-overlay"),
@@ -182,7 +183,8 @@ window.HdmiPanel = (() => {
       }
       pc = null;
     }
-    const { video } = els();
+    const { video, unmute } = els();
+    if (unmute) unmute.hidden = true;
     if (video) {
       try {
         video.pause();
@@ -233,16 +235,32 @@ window.HdmiPanel = (() => {
         video.srcObject = new MediaStream();
       }
       video.srcObject.addTrack(ev.track);
-      video.muted = true;
+      // Keep audio enabled under the user-gesture from Start click when possible.
+      video.muted = !enableAudio;
+      const { unmute } = els();
+      if (unmute) unmute.hidden = !enableAudio || !video.muted;
       video
         .play()
         .then(() => {
-          if (enableAudio) video.muted = false;
+          if (enableAudio && video.muted) {
+            video.muted = false;
+            if (unmute) unmute.hidden = true;
+          }
         })
-        .catch((err) => console.warn("video.play", err));
+        .catch((err) => {
+          console.warn("video.play", err);
+          // Autoplay with sound blocked: fall back to muted play + unmute button.
+          video.muted = true;
+          video.play().catch(() => {});
+          if (unmute && enableAudio) unmute.hidden = false;
+          setStatus("浏览器限制自动播放声音，请点击「取消静音」");
+        });
       if (ev.track.kind === "video") {
         setOverlay("", false);
-        setStatus("画面已连接");
+        setStatus(enableAudio ? "画面已连接（含音频）" : "画面已连接");
+      }
+      if (ev.track.kind === "audio") {
+        setStatus("已收到音频轨道");
       }
     };
 
@@ -309,11 +327,21 @@ window.HdmiPanel = (() => {
     if (!root || root.dataset.bound === "1") return;
     root.dataset.bound = "1";
 
-    const { resolution, audio, start: startBtn, stop: stopBtn } = els();
+    const { resolution, audio, start: startBtn, stop: stopBtn, unmute } = els();
     resolution.addEventListener("change", refreshBandwidth);
     audio.addEventListener("change", refreshBandwidth);
     startBtn.addEventListener("click", () => start());
     stopBtn.addEventListener("click", () => stop());
+    if (unmute) {
+      unmute.addEventListener("click", () => {
+        const { video } = els();
+        if (!video) return;
+        video.muted = false;
+        video.play().catch(() => {});
+        unmute.hidden = true;
+        setStatus("已取消静音");
+      });
+    }
     refreshBandwidth();
     ensureSocket();
   }
