@@ -7,6 +7,8 @@ window.HdmiPanel = (() => {
   let pendingLocalIce = [];
   let remoteDescriptionSet = false;
   let offerSent = false;
+  let statsTimer = null;
+  let lastStats = null;
 
   function els() {
     return {
@@ -40,9 +42,14 @@ window.HdmiPanel = (() => {
     if (stop) stop.disabled = !running;
   }
 
-  async function refreshBandwidth() {
-    const { resolution, audio, bandwidth } = els();
-    if (!resolution || !bandwidth) return;
+  function setBandwidthText(text) {
+    const { bandwidth } = els();
+    if (bandwidth) bandwidth.textContent = text;
+  }
+
+  async function refreshEstimateBandwidth() {
+    const { resolution, audio } = els();
+    if (!resolution) return;
     const [width, height] = resolution.value.split("x").map(Number);
     const params = new URLSearchParams({
       width: String(width),
@@ -53,9 +60,86 @@ window.HdmiPanel = (() => {
     try {
       const res = await fetch(`/api/hdmi/bandwidth?${params}`);
       const data = await res.json();
-      bandwidth.textContent = data.text || "无法估算带宽";
+      setBandwidthText(`预计 ${data.text || "无法估算"}`);
     } catch (err) {
-      bandwidth.textContent = `带宽估算失败：${err}`;
+      setBandwidthText(`带宽估算失败：${err}`);
+    }
+  }
+
+  function stopStatsMonitor() {
+    if (statsTimer) {
+      clearInterval(statsTimer);
+      statsTimer = null;
+    }
+    lastStats = null;
+  }
+
+  function startStatsMonitor() {
+    stopStatsMonitor();
+    statsTimer = setInterval(() => {
+      updateLiveBandwidth().catch(() => {});
+    }, 1000);
+    updateLiveBandwidth().catch(() => {});
+  }
+
+  async function updateLiveBandwidth() {
+    const { resolution } = els();
+    if (!pc || ["closed", "failed"].includes(pc.connectionState)) {
+      await refreshEstimateBandwidth();
+      return;
+    }
+
+    try {
+      const report = await pc.getStats();
+      let videoBytes = 0;
+      let audioBytes = 0;
+      let framesPerSecond = null;
+      let frameWidth = null;
+      let frameHeight = null;
+
+      report.forEach((stat) => {
+        if (stat.type !== "inbound-rtp") return;
+        const kind = stat.kind || stat.mediaType;
+        if (kind === "video") {
+          videoBytes += stat.bytesReceived || 0;
+          if (stat.framesPerSecond != null) framesPerSecond = stat.framesPerSecond;
+          if (stat.frameWidth) frameWidth = stat.frameWidth;
+          if (stat.frameHeight) frameHeight = stat.frameHeight;
+        } else if (kind === "audio") {
+          audioBytes += stat.bytesReceived || 0;
+        }
+      });
+
+      const now = performance.now();
+      if (!lastStats) {
+        lastStats = { ts: now, videoBytes, audioBytes };
+        setBandwidthText("实时带宽测量中…");
+        return;
+      }
+
+      const dt = (now - lastStats.ts) / 1000;
+      if (dt <= 0.2) return;
+
+      const videoMbps = (((videoBytes - lastStats.videoBytes) * 8) / dt) / 1e6;
+      const audioKbps = (((audioBytes - lastStats.audioBytes) * 8) / dt) / 1e3;
+      const totalMbps = videoMbps + audioKbps / 1000;
+      lastStats = { ts: now, videoBytes, audioBytes };
+
+      const resLabel =
+        frameWidth && frameHeight ? `${frameWidth}×${frameHeight}` : resolution?.value || "";
+      const fpsLabel =
+        framesPerSecond != null && Number.isFinite(framesPerSecond)
+          ? ` @${Math.round(framesPerSecond)}fps`
+          : "";
+
+      setBandwidthText(
+        `实时带宽 ${Math.max(0, totalMbps).toFixed(2)} Mbps` +
+          `（视频 ${Math.max(0, videoMbps).toFixed(2)} Mbps` +
+          ` + 音频 ${Math.max(0, audioKbps).toFixed(0)} kbps）` +
+          (resLabel ? ` · ${resLabel}${fpsLabel}` : "")
+      );
+    } catch (err) {
+      setBandwidthText(`实时带宽读取失败：${err}`);
     }
   }
 
@@ -150,11 +234,13 @@ window.HdmiPanel = (() => {
       if (state === "connected") {
         setOverlay("", false);
         setButtons({ running: true });
+        startStatsMonitor();
       }
       if (state === "failed" || state === "closed") {
         cleanupPc();
         setButtons({ running: false });
         setOverlay(state === "closed" ? "已停止" : "连接失败", true);
+        refreshEstimateBandwidth();
       }
     });
     socket.on("hdmi:error", (msg) => {
@@ -163,11 +249,13 @@ window.HdmiPanel = (() => {
       setOverlay(msg.error || "错误", true);
       setButtons({ running: false });
       cleanupPc();
+      refreshEstimateBandwidth();
     });
     return socket;
   }
 
   function cleanupPc() {
+    stopStatsMonitor();
     remoteDescriptionSet = false;
     offerSent = false;
     pendingRemoteIce = [];
@@ -201,7 +289,7 @@ window.HdmiPanel = (() => {
     const { resolution, audio, video } = els();
     setButtons({ running: true });
 
-    await refreshBandwidth();
+    await refreshEstimateBandwidth();
     const [width, height] = resolution.value.split("x").map(Number);
     const enableAudio = audio.checked;
 
@@ -235,7 +323,6 @@ window.HdmiPanel = (() => {
         video.srcObject = new MediaStream();
       }
       video.srcObject.addTrack(ev.track);
-      // Keep audio enabled under the user-gesture from Start click when possible.
       video.muted = !enableAudio;
       const { unmute } = els();
       if (unmute) unmute.hidden = !enableAudio || !video.muted;
@@ -249,7 +336,6 @@ window.HdmiPanel = (() => {
         })
         .catch((err) => {
           console.warn("video.play", err);
-          // Autoplay with sound blocked: fall back to muted play + unmute button.
           video.muted = true;
           video.play().catch(() => {});
           if (unmute && enableAudio) unmute.hidden = false;
@@ -258,13 +344,13 @@ window.HdmiPanel = (() => {
       if (ev.track.kind === "video") {
         setOverlay("", false);
         setStatus(enableAudio ? "画面已连接（含音频）" : "画面已连接");
+        startStatsMonitor();
       }
       if (ev.track.kind === "audio") {
         setStatus("已收到音频轨道");
       }
     };
 
-    // Buffer local ICE until offer is sent, so the server always has a session/reservation.
     pc.onicecandidate = (ev) => {
       if (!ev.candidate) return;
       const msg = {
@@ -282,6 +368,7 @@ window.HdmiPanel = (() => {
     pc.onconnectionstatechange = () => {
       if (!pc) return;
       setStatus(`连接状态：${pc.connectionState}`);
+      if (pc.connectionState === "connected") startStatsMonitor();
     };
 
     pc.oniceconnectionstatechange = () => {
@@ -320,6 +407,7 @@ window.HdmiPanel = (() => {
     setButtons({ running: false });
     setOverlay("已停止", true);
     setStatus("已停止监测");
+    await refreshEstimateBandwidth();
   }
 
   function mount(panelEl) {
@@ -328,8 +416,12 @@ window.HdmiPanel = (() => {
     root.dataset.bound = "1";
 
     const { resolution, audio, start: startBtn, stop: stopBtn, unmute } = els();
-    resolution.addEventListener("change", refreshBandwidth);
-    audio.addEventListener("change", refreshBandwidth);
+    resolution.addEventListener("change", () => {
+      if (!pc) refreshEstimateBandwidth();
+    });
+    audio.addEventListener("change", () => {
+      if (!pc) refreshEstimateBandwidth();
+    });
     startBtn.addEventListener("click", () => start());
     stopBtn.addEventListener("click", () => stop());
     if (unmute) {
@@ -342,8 +434,9 @@ window.HdmiPanel = (() => {
         setStatus("已取消静音");
       });
     }
-    refreshBandwidth();
+    refreshEstimateBandwidth();
     ensureSocket();
+    start().catch((err) => console.warn("auto start hdmi", err));
   }
 
   return { mount, start, stop };

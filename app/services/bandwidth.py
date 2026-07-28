@@ -6,8 +6,8 @@ from typing import Any
 
 
 def estimate_bandwidth(
-    width: int = 1280,
-    height: int = 720,
+    width: int = 1920,
+    height: int = 1080,
     fps: int = 30,
     audio: bool = True,
 ) -> dict[str, Any]:
