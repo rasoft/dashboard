@@ -265,37 +265,6 @@ body {
   display: flex;
   flex-direction: column;
   padding: 0.5rem 0.4rem 0.35rem;
-  background: #ffffff;
-}
-
-.panel-host-remote {
-  background: #ffffff !important;
-  border-color: #d8d8d8 !important;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12) !important;
-}
-
-.panel-host-remote .panel-header {
-  background: #f5f5f5;
-  border-bottom-color: #e6e6e6;
-  color: #222;
-}
-
-.panel-host-remote .panel-title {
-  color: #222;
-}
-
-.panel-host-remote .icon-btn {
-  color: #666;
-}
-
-.panel-host-remote .icon-btn:hover {
-  color: #111;
-  border-color: #ccc;
-  background: rgba(0, 0, 0, 0.04);
-}
-
-.panel-host-remote .remote-feedback {
-  color: #666;
 }
 
 /* Remote — photo with clickable hotspots */
