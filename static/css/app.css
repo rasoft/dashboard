@@ -755,6 +755,84 @@ body {
   color: var(--danger);
 }
 
+/* SurfaceFlinger FrameTimeline gantt */
+.sf-ftl {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  height: 100%;
+  min-height: 0;
+}
+
+.sf-ftl-meta {
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  background: rgba(61, 156, 240, 0.1);
+  border: 1px solid rgba(61, 156, 240, 0.28);
+  color: #b9d9f8;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.sf-ftl-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 160px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.28);
+  overflow: auto;
+}
+
+.sf-ftl-stage canvas {
+  display: block;
+  width: 100%;
+}
+
+.sf-ftl-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.sf-ftl-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sf-ftl-swatch {
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+
+.sf-ftl-swatch.actual {
+  background: rgba(61, 156, 240, 0.72);
+}
+
+.sf-ftl-swatch.expected {
+  border: 1.25px solid rgba(180, 210, 240, 0.9);
+  background: transparent;
+}
+
+.sf-ftl-swatch.jank {
+  background: rgba(224, 92, 92, 0.78);
+}
+
+.sf-ftl-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.sf-ftl-status.error {
+  color: var(--danger);
+}
+
 @media (max-width: 720px) {
   .topbar {
     padding: 0.75rem;

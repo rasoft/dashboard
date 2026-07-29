@@ -41,6 +41,7 @@ const PANEL_DEFS = {
     minH: 8,
     x: 0,
     y: 18,
+    defaultOpen: false,
   },
   "sf-events": {
     id: "sf-events",
@@ -51,6 +52,18 @@ const PANEL_DEFS = {
     minH: 7,
     x: 6,
     y: 18,
+    defaultOpen: false,
+  },
+  "sf-frametimeline": {
+    id: "sf-frametimeline",
+    title: "Sf-帧时间线",
+    w: 8,
+    h: 12,
+    minW: 5,
+    minH: 8,
+    x: 0,
+    y: 30,
+    defaultOpen: false,
   },
 };
 
@@ -178,10 +191,14 @@ const Dashboard = (() => {
     return { x, y, w, h };
   }
 
+  function defaultOpenIds() {
+    return Object.keys(PANEL_DEFS).filter((id) => PANEL_DEFS[id].defaultOpen !== false);
+  }
+
   function defaultStore() {
     return {
       layouts: {},
-      open: Object.keys(PANEL_DEFS),
+      open: defaultOpenIds(),
     };
   }
 
@@ -191,7 +208,7 @@ const Dashboard = (() => {
       if (raw && typeof raw === "object" && raw.layouts) {
         return {
           layouts: raw.layouts || {},
-          open: Array.isArray(raw.open) ? raw.open : Object.keys(PANEL_DEFS),
+          open: Array.isArray(raw.open) ? raw.open : defaultOpenIds(),
         };
       }
     } catch {
@@ -261,6 +278,8 @@ const Dashboard = (() => {
       body.appendChild(cloneTemplate("tpl-hwc"));
     } else if (panelId === "sf-events") {
       body.appendChild(cloneTemplate("tpl-sf-events"));
+    } else if (panelId === "sf-frametimeline") {
+      body.appendChild(cloneTemplate("tpl-sf-frametimeline"));
     }
 
     panel.querySelector('[data-action="close"]').addEventListener("click", (e) => {
@@ -310,6 +329,9 @@ const Dashboard = (() => {
     if (panelId === "sf-events" && window.SfEventsPanel) {
       window.SfEventsPanel.mount(panelEl);
     }
+    if (panelId === "sf-frametimeline" && window.SfFrametimelinePanel) {
+      window.SfFrametimelinePanel.mount(panelEl);
+    }
 
     const node = grid.engine.nodes.find((n) => n.id === panelId);
     if (node) clampNode(node);
@@ -331,6 +353,9 @@ const Dashboard = (() => {
     }
     if (panelId === "sf-events" && window.SfEventsPanel?.unmount) {
       window.SfEventsPanel.unmount();
+    }
+    if (panelId === "sf-frametimeline" && window.SfFrametimelinePanel?.unmount) {
+      window.SfFrametimelinePanel.unmount();
     }
 
     // Remember last size/position before removing from the grid.
@@ -371,8 +396,8 @@ const Dashboard = (() => {
   function restore() {
     const store = loadStore();
     let toOpen = (store.open || []).filter((id) => PANEL_DEFS[id]);
-    // If layout was corrupted to an empty open list, fall back to all panels.
-    if (!toOpen.length) toOpen = Object.keys(PANEL_DEFS);
+    // If layout was corrupted to an empty open list, fall back to default panels.
+    if (!toOpen.length) toOpen = defaultOpenIds();
     toOpen.forEach((id) => addPanel(id));
   }
 

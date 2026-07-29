@@ -10,11 +10,13 @@
 - **内存带宽面板**：经 ADB 读取 DDR monitor（含全表去重后的 `total` 汇总与各 client 曲线）；可用按钮开关各曲线图（默认显示 total / cpu / gpu / vpu）
 - **Sf-HWC层面板**：经 ADB `dumpsys SurfaceFlinger --hwclayers` 按秒刷新，按表格顺序叠画图层（表前列在下、表后列在上；DEVICE 实线 / CLIENT 虚线，alpha 80%）
 - **Sf-事件面板**：经 ADB `dumpsys SurfaceFlinger --events` 按秒采样 `mWorkDuration` / `mReadyDuration` / `last vsync time` 并绘制曲线
+- **Sf-帧时间线面板**：经 ADB `dumpsys SurfaceFlinger --frametimeline -all` 按秒刷新，甘特图展示 Display Frame / Layer 的 Expected·Actual 与 Jank
 - 开始监测后按秒刷新实时网络带宽（WebRTC 收流统计）；未开播时显示预估
 - 打开 HDMI 面板后自动开始播放
 - 打开内存带宽面板后会自动启用 debugfs monitor 并按秒采样；设备重启 / adb 重连后若 status_raw 不可读，会自动重新 `adb root` + mount debugfs + enable
 - 打开 Sf-HWC层面板后自动按秒刷新
 - 打开 Sf-事件面板后自动按秒刷新
+- 打开 Sf-帧时间线面板后自动按秒刷新
 
 串口（FTDI）设备发现接口已预留：`GET /api/serial/ports`，终端面板未在首期实现。
 
@@ -86,6 +88,7 @@ http://<工作站IP>:5000
 6. **内存带宽**：打开面板后自动执行 `adb root`、挂载 debugfs、启用 DDR monitor，并每秒采样各 client 绘制曲线（默认显示 `cpu_a55_main` / `gpu` / `vpu`）
 7. **Sf-HWC层**：打开面板后每秒读取 SurfaceFlinger HWC layers，按表格顺序叠画（最后一行在最上层）并在下方列出图例
 8. **Sf-事件**：打开面板后每秒读取 SurfaceFlinger events，绘制 work / ready / last vsync 时序曲线
+9. **Sf-帧时间线**：打开面板后每秒读取 FrameTimeline，甘特图展示 SF / Layer 的 Expected·Actual 时段（Jank 着色）
 
 同一时间可多浏览器订阅同一路 HDMI 采集（一路采集、多路转发）。
 
@@ -100,6 +103,7 @@ http://<工作站IP>:5000
 - `GET /api/ddr/sample?targets=cpu_a55_main,gpu,vpu,vdec_4k,vdec_2k_jpeg,emmc_sd,usb_pcie,phy_eth_dac` — 读取一次内存带宽
 - `GET /api/hwc/layers` — 读取 SurfaceFlinger HWC 图层
 - `GET /api/sf/events` — 读取 SurfaceFlinger events 时序字段
+- `GET /api/sf/frametimeline` — 读取 SurfaceFlinger FrameTimeline（`--frametimeline -all`）
 - `GET /api/serial/ports`
 
 WebRTC 信令（Socket.IO）：`hdmi:offer` / `hdmi:answer` / `hdmi:ice` / `hdmi:stop`
@@ -109,7 +113,7 @@ WebRTC 信令（Socket.IO）：`hdmi:offer` / `hdmi:answer` / `hdmi:ice` / `hdmi
 ```text
 app/
   routes/       # HTTP 页面与 REST API
-  services/     # adb、capture、bandwidth、webrtc、ddr_bw、hwc_layers、sf_events
+  services/     # adb、capture、bandwidth、webrtc、ddr_bw、hwc_layers、sf_events、sf_frametimeline
   signaling.py  # Socket.IO 信令
 static/         # CSS / JS
 templates/      # 单页 Dashboard
