@@ -10,13 +10,13 @@
 - **内存带宽面板**：经 ADB 读取 DDR monitor（含全表去重后的 `total` 汇总与各 client 曲线）；可用按钮开关各曲线图（默认显示 total / cpu / gpu / vpu）
 - **Sf-HWC层面板**：经 ADB `dumpsys SurfaceFlinger --hwclayers` 按秒刷新，按表格顺序叠画图层（表前列在下、表后列在上；DEVICE 实线 / CLIENT 虚线，alpha 80%）
 - **Sf-事件面板**：经 ADB `dumpsys SurfaceFlinger --events` 按秒采样 `mWorkDuration` / `mReadyDuration` / `last vsync time` 并绘制曲线
-- **Sf-帧时间线面板**：经 ADB `dumpsys SurfaceFlinger --frametimeline -all` 按秒刷新，甘特图展示 Display Frame / Layer 的 Expected·Actual 与 Jank
+- **Sf-帧时间线面板**：经 ADB `dumpsys SurfaceFlinger --frametimeline -all`；打开面板后自动按秒刷新，可用「开始/结束」切换；横轴帧序号、纵轴 0–⌈末帧 Expected Present⌉₀₀ ms，绘制 Expected/Actual 的 Start→Present 区间（Jank 红色），点选查看 Layer 明细
 - 开始监测后按秒刷新实时网络带宽（WebRTC 收流统计）；未开播时显示预估
 - 打开 HDMI 面板后自动开始播放
 - 打开内存带宽面板后会自动启用 debugfs monitor 并按秒采样；设备重启 / adb 重连后若 status_raw 不可读，会自动重新 `adb root` + mount debugfs + enable
 - 打开 Sf-HWC层面板后自动按秒刷新
 - 打开 Sf-事件面板后自动按秒刷新
-- 打开 Sf-帧时间线面板后自动按秒刷新
+- 打开 Sf-帧时间线面板后自动开始采样，可用「开始 / 结束」切换刷新
 
 串口（FTDI）设备发现接口已预留：`GET /api/serial/ports`，终端面板未在首期实现。
 
@@ -88,7 +88,7 @@ http://<工作站IP>:5000
 6. **内存带宽**：打开面板后自动执行 `adb root`、挂载 debugfs、启用 DDR monitor，并每秒采样各 client 绘制曲线（默认显示 `cpu_a55_main` / `gpu` / `vpu`）
 7. **Sf-HWC层**：打开面板后每秒读取 SurfaceFlinger HWC layers，按表格顺序叠画（最后一行在最上层）并在下方列出图例
 8. **Sf-事件**：打开面板后每秒读取 SurfaceFlinger events，绘制 work / ready / last vsync 时序曲线
-9. **Sf-帧时间线**：打开面板后每秒读取 FrameTimeline，甘特图展示 SF / Layer 的 Expected·Actual 时段（Jank 着色）
+9. **Sf-帧时间线**：打开面板后自动按秒刷新，可用「开始/结束」切换；横轴帧序号、纵轴 0–⌈末帧 Expected Present⌉₀₀ ms，并排绘制 Expected/Actual 的 Start→Present；点击某一帧查看 Layer 明细
 
 同一时间可多浏览器订阅同一路 HDMI 采集（一路采集、多路转发）。
 
