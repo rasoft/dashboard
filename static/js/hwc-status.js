@@ -13,6 +13,14 @@ window.HwcStatusPanel = (() => {
     [100, 180, 200],
     [200, 100, 160],
   ];
+  // VPU channel colors for the axonometric diagram / list swatches.
+  const VPU_COLORS = {
+    OSD: [230, 140, 80], // orange
+    SMT: [226, 70, 70], // red
+    MSK: [140, 148, 158], // gray
+    VPP: [61, 156, 240], // blue
+    VPP1: [130, 200, 255], // light blue
+  };
 
   let root = null;
   let timer = null;
@@ -27,7 +35,6 @@ window.HwcStatusPanel = (() => {
       stage: root.querySelector("#hwc-st-stage"),
       canvas: root.querySelector("#hwc-st-canvas"),
       list: root.querySelector("#hwc-st-list"),
-      notes: root.querySelector("#hwc-st-notes"),
       status: root.querySelector("#hwc-st-status"),
     };
   }
@@ -69,8 +76,30 @@ window.HwcStatusPanel = (() => {
     return "—";
   }
 
-  function colorFor(index, alpha = FILL_ALPHA) {
-    const [r, g, b] = PALETTE[index % PALETTE.length];
+  function normalizeVpuType(vpu) {
+    const s = String(vpu || "").trim().toUpperCase();
+    if (!s || s === "—" || s === "-") return "";
+    if (s === "OSD" || s.startsWith("OSD")) return "OSD";
+    if (s === "SMT" || s.startsWith("SMT")) return "SMT";
+    if (s === "MSK" || s.startsWith("MSK")) return "MSK";
+    // VPP1 before VPP so "VPP1..." is not classified as VPP.
+    if (s === "VPP1" || s.startsWith("VPP1")) return "VPP1";
+    if (s === "VPP" || s === "VPP0" || s.startsWith("VPP")) return "VPP";
+    return "";
+  }
+
+  function colorFor(index, alpha = FILL_ALPHA, layerOrVpu = null) {
+    let rgb = null;
+    if (layerOrVpu != null) {
+      const vpu =
+        typeof layerOrVpu === "string"
+          ? layerOrVpu
+          : layerOrVpu?.vpu;
+      const key = normalizeVpuType(vpu);
+      if (key && VPU_COLORS[key]) rgb = VPU_COLORS[key];
+    }
+    if (!rgb) rgb = PALETTE[index % PALETTE.length];
+    const [r, g, b] = rgb;
     return {
       fill: `rgba(${r}, ${g}, ${b}, ${alpha})`,
       stroke: `rgba(${r}, ${g}, ${b}, 0.95)`,
@@ -156,6 +185,82 @@ window.HwcStatusPanel = (() => {
     return null;
   }
 
+  function isClientComp(layer) {
+    const compType = String(layer?.comp || "").trim().toLowerCase();
+    return compType === "client" || compType.startsWith("client");
+  }
+
+  /** Union of layer views into one axis-aligned box. */
+  function unionViews(views) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let any = false;
+    (views || []).forEach((v) => {
+      if (!v) return;
+      any = true;
+      const x = Number(v.x) || 0;
+      const y = Number(v.y) || 0;
+      const w = Math.max(0, Number(v.width) || 0);
+      const h = Math.max(0, Number(v.height) || 0);
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + w);
+      maxY = Math.max(maxY, y + h);
+    });
+    if (!any) return null;
+    return {
+      x: minX,
+      y: minY,
+      width: Math.max(1, maxX - minX),
+      height: Math.max(1, maxY - minY),
+    };
+  }
+
+  /**
+   * Build drawable items for the axonometric stack: all Comp=Client layers
+   * collapse into a single plane (at the highest-Z Client slot).
+   */
+  function drawItemsFromLayers(layers) {
+    const list = layers || [];
+    const clientLayers = list.filter(isClientComp);
+    const items = [];
+    let clientMerged = false;
+
+    list.forEach((layer, i) => {
+      if (isClientComp(layer)) {
+        if (clientMerged) return;
+        clientMerged = true;
+        // List is Z-desc; clients[0] is the topmost Client layer.
+        const top = clientLayers[0] || layer;
+        const view = unionViews(clientLayers.map(viewOf)) || viewOf(top);
+        const count = clientLayers.length;
+        items.push({
+          layer: top,
+          colorIndex: i,
+          view,
+          isClient: true,
+          mergedCount: count,
+          label:
+            count > 1
+              ? `Z${top.z} Client×${count}`
+              : `Z${top.z} #${top.id}`,
+        });
+        return;
+      }
+      items.push({
+        layer,
+        colorIndex: i,
+        view: viewOf(layer),
+        isClient: false,
+        mergedCount: 1,
+        label: `Z${layer.z} #${layer.id}`,
+      });
+    });
+    return items;
+  }
+
   function drawPoly(ctx, pts, fill, stroke, dashed) {
     if (!pts || pts.length < 2) return;
     ctx.beginPath();
@@ -212,6 +317,51 @@ window.HwcStatusPanel = (() => {
     ctx.fillText(text, x, y);
   }
 
+  /** Place a label inside the polygon, inset from a corner toward the centroid. */
+  function drawInsideLabel(ctx, pts, cornerIndex, text) {
+    if (!pts?.length || !text) return;
+    const corner = pts[cornerIndex];
+    if (!corner) return;
+    let cx = 0;
+    let cy = 0;
+    pts.forEach((p) => {
+      cx += p.sx;
+      cy += p.sy;
+    });
+    cx /= pts.length;
+    cy /= pts.length;
+    // Toward centroid = inside.
+    let dx = cx - corner.sx;
+    let dy = cy - corner.sy;
+    const len = Math.hypot(dx, dy) || 1;
+    const dist = 12;
+    const x = corner.sx + (dx / len) * dist;
+    const y = corner.sy + (dy / len) * dist;
+
+    const fontSize = 11;
+    ctx.font = `700 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    const tw = ctx.measureText(text).width;
+    const lh = fontSize + 3;
+    const padX = 3;
+    const alignLeft = dx >= 0;
+    const alignTop = dy >= 0;
+    ctx.textAlign = alignLeft ? "left" : "right";
+    ctx.textBaseline = alignTop ? "top" : "bottom";
+    const boxX = alignLeft ? x - padX : x - tw - padX;
+    const boxY = alignTop ? y : y - lh;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.62)";
+    ctx.fillRect(boxX, boxY, tw + padX * 2, lh);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(text, x, y);
+  }
+
+  function vpuLabelOf(layer) {
+    const key = normalizeVpuType(layer?.vpu);
+    if (key) return key;
+    const raw = String(layer?.vpu || "").trim();
+    return raw && raw !== "—" ? raw : "";
+  }
+
   function draw(payload) {
     const { canvas } = els();
     if (!canvas) return;
@@ -227,16 +377,15 @@ window.HwcStatusPanel = (() => {
     const layers = payload?.layers || [];
     const size = displaySize(payload);
     const pad = 16;
-    const n = Math.max(1, layers.length);
+    const rawItems = drawItemsFromLayers(layers);
+    const n = Math.max(1, rawItems.length);
     // Keep explode gap modest so the stack stays readable in a small panel.
     const gap = Math.max(120, Math.min(size.width, size.height) * 0.18);
 
-    const items = layers.map((layer, i) => ({
-      layer,
-      colorIndex: i,
-      // List is Z-desc; highest Z gets largest elevation.
+    const items = rawItems.map((item, i) => ({
+      ...item,
+      // Highest Z (earlier in Z-desc list) gets largest elevation.
       elev: (n - 1 - i) * gap,
-      view: viewOf(layer),
     }));
 
     const baseCorners = [
@@ -291,7 +440,7 @@ window.HwcStatusPanel = (() => {
     );
 
     // Low Z first (bottom), high Z last (top).
-    [...items].reverse().forEach(({ layer, colorIndex, elev, view }) => {
+    [...items].reverse().forEach(({ layer, colorIndex, elev, view, isClient, label }) => {
       if (!view) return;
       const corners = layerCorners(view);
       const pts = corners.map((c) => toScreen(c.x, c.y, elev));
@@ -299,9 +448,7 @@ window.HwcStatusPanel = (() => {
         layer.alpha?.float != null
           ? Math.min(0.55, Math.max(0.22, Number(layer.alpha.float) * 0.45))
           : 0.4;
-      const colors = colorFor(colorIndex, alpha);
-      const compType = String(layer.comp || "").trim().toLowerCase();
-      const isClient = compType === "client" || compType.startsWith("client");
+      const colors = colorFor(colorIndex, alpha, layer);
 
       if (elev > 0) {
         ctx.strokeStyle = "rgba(142,160,178,0.28)";
@@ -320,65 +467,59 @@ window.HwcStatusPanel = (() => {
         ctx.setLineDash([]);
       }
 
-      drawPoly(ctx, pts, colors.fill, colors.stroke, isClient);
+      drawPoly(ctx, pts, colors.fill, colors.stroke, !!isClient);
 
-      drawOutsideLabel(ctx, pts, 0, `Z${layer.z} #${layer.id}`);
+      drawOutsideLabel(ctx, pts, 0, label);
+      // Display bottom-left corner is layerCorners index 3 (x, y+h).
+      const vpuText = vpuLabelOf(layer);
+      if (vpuText) drawInsideLabel(ctx, pts, 3, vpuText);
     });
   }
 
   function renderList(payload) {
-    const { list, notes } = els();
+    const { list } = els();
     if (!list) return;
 
     const layers = payload.layers || [];
     if (!layers.length) {
       list.innerHTML = '<div class="hwc-st-empty">暂无图层</div>';
-    } else {
-      list.innerHTML = layers
-        .map((layer, i) => {
-          const colors = colorFor(i);
-          const comp = `${escapeHtml(layer.comp || "—")}${
-            layer.comp_star ? "*" : ""
-          }`;
-          const content = escapeHtml(layer.content || "—");
-          const compType = String(layer.comp || "").trim().toLowerCase();
-          const isClient =
-            compType === "client" || compType.startsWith("client");
-          const isDevice = compType === "device";
-          return [
-            `<div class="hwc-st-row${isDevice ? " device" : ""}${
-              isClient ? " client" : ""
-            }">`,
-            `<div class="hwc-st-row-head">`,
-            `<span class="hwc-st-swatch${isClient ? " dashed" : ""}" style="background:${colors.fill};border-color:${colors.stroke}"></span>`,
-            `<span class="hwc-st-z">Z ${escapeHtml(String(layer.z))}</span>`,
-            `<span class="hwc-st-id">ID ${escapeHtml(String(layer.id))}</span>`,
-            `<span class="hwc-st-content">${content}</span>`,
-            `<span class="hwc-st-comp">${comp}</span>`,
-            `<span class="hwc-st-vpu">${escapeHtml(layer.vpu || "—")}</span>`,
-            `<span class="hwc-st-format">${escapeHtml(layer.format || "—")}</span>`,
-            `<span class="hwc-st-alpha">α ${escapeHtml(fmtAlpha(layer.alpha))}</span>`,
-            `</div>`,
-            `<div class="hwc-st-row-meta">`,
-            `View ${escapeHtml(fmtBox(layer.vpu_view))}`,
-            ` · Disp ${escapeHtml(fmtRect(layer.disp_frame))}`,
-            ` · Crop ${escapeHtml(fmtRect(layer.source_crop))}`,
-            ` · Clip ${escapeHtml(fmtBox(layer.vpu_clip))}`,
-            `</div>`,
-            `</div>`,
-          ].join("");
-        })
-        .join("");
+      return;
     }
-
-    if (notes) {
-      const noteLines = payload.notes || [];
-      notes.innerHTML = noteLines.length
-        ? noteLines
-            .map((n) => `<div class="hwc-st-note">${escapeHtml(n)}</div>`)
-            .join("")
-        : "";
-    }
+    list.innerHTML = layers
+      .map((layer, i) => {
+        const colors = colorFor(i, FILL_ALPHA, layer);
+        const comp = `${escapeHtml(layer.comp || "—")}${
+          layer.comp_star ? "*" : ""
+        }`;
+        const content = escapeHtml(layer.content || "—");
+        const compType = String(layer.comp || "").trim().toLowerCase();
+        const isClient =
+          compType === "client" || compType.startsWith("client");
+        const isDevice = compType === "device";
+        return [
+          `<div class="hwc-st-row${isDevice ? " device" : ""}${
+            isClient ? " client" : ""
+          }">`,
+          `<div class="hwc-st-row-head">`,
+          `<span class="hwc-st-swatch${isClient ? " dashed" : ""}" style="background:${colors.fill};border-color:${colors.stroke}"></span>`,
+          `<span class="hwc-st-z">Z ${escapeHtml(String(layer.z))}</span>`,
+          `<span class="hwc-st-id">ID ${escapeHtml(String(layer.id))}</span>`,
+          `<span class="hwc-st-content">${content}</span>`,
+          `<span class="hwc-st-comp">${comp}</span>`,
+          `<span class="hwc-st-vpu">${escapeHtml(layer.vpu || "—")}</span>`,
+          `<span class="hwc-st-format">${escapeHtml(layer.format || "—")}</span>`,
+          `<span class="hwc-st-alpha">α ${escapeHtml(fmtAlpha(layer.alpha))}</span>`,
+          `</div>`,
+          `<div class="hwc-st-row-meta">`,
+          `View ${escapeHtml(fmtBox(layer.vpu_view))}`,
+          ` · Disp ${escapeHtml(fmtRect(layer.disp_frame))}`,
+          ` · Crop ${escapeHtml(fmtRect(layer.source_crop))}`,
+          ` · Clip ${escapeHtml(fmtBox(layer.vpu_clip))}`,
+          `</div>`,
+          `</div>`,
+        ].join("");
+      })
+      .join("");
   }
 
   function render(payload) {

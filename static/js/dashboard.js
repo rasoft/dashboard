@@ -45,7 +45,7 @@ const PANEL_DEFS = {
   },
   "hwc-status": {
     id: "hwc-status",
-    title: "HWC状态",
+    title: "VPU-HWC状态",
     w: 7,
     h: 12,
     minW: 5,

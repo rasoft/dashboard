@@ -9,14 +9,14 @@
 - **HDMI 输出监测**：经 MACROSILICON USB3 Video 采集，使用 WebRTC 推送到浏览器（一路采集、多浏览器订阅）
 - **内存带宽面板**：经 ADB 读取 DDR monitor（含全表去重后的 `total` 汇总与各 client 曲线）；可用按钮开关各曲线图（默认显示 total / cpu / gpu / vpu）
 - **Sf-HWC层面板**：经 ADB `dumpsys SurfaceFlinger --hwclayers` 按秒刷新；用层 frame 以爆炸轴测图展示（绕 Z 共逆时针 270°；按表格顺序向上拉开；DEVICE 实线 / CLIENT 虚线），并在下方列出图例
-- **HWC状态面板**：经 ADB `dumpsys android.hardware.graphics.composer3.IComposer/default` 读取 NationalChip HWC 表；用 VPU View 以爆炸轴测图叠画各层位置，并按 Z 从大到小列出明细
+- **VPU-HWC状态面板**：经 ADB `dumpsys android.hardware.graphics.composer3.IComposer/default` 读取 NationalChip HWC 表；用 VPU View 以爆炸轴测图叠画各层位置，并按 Z 从大到小列出明细
 - **Sf-事件面板**：经 ADB `dumpsys SurfaceFlinger --events` 按秒采样 `mWorkDuration` / `mReadyDuration` / `last vsync time` 并绘制曲线
 - **Sf-帧时间线面板**：经 ADB `dumpsys SurfaceFlinger --frametimeline -all`；打开面板后自动按秒刷新，可用「开始/结束」切换；横轴帧序号、纵轴 0–⌈末帧 Expected Present⌉₀₀ ms，绘制 Expected/Actual 的 Start→Present 区间（Jank 红色），点选查看 Layer 明细
 - 开始监测后按秒刷新实时网络带宽（WebRTC 收流统计）；未开播时显示预估
 - 打开 HDMI 面板后自动开始播放
 - 打开内存带宽面板后会自动启用 debugfs monitor 并按秒采样；设备重启 / adb 重连后若 status_raw 不可读，会自动重新 `adb root` + mount debugfs + enable
 - 打开 Sf-HWC层面板后自动按秒刷新
-- 打开 HWC状态面板后自动按秒刷新
+- 打开 VPU-HWC状态面板后自动按秒刷新
 - 打开 Sf-事件面板后自动按秒刷新
 - 打开 Sf-帧时间线面板后自动开始采样，可用「开始 / 结束」切换刷新
 
@@ -89,7 +89,7 @@ http://<工作站IP>:5000
 5. **HDMI**：打开面板后默认以 1920×1080 自动开始监测；可改分辨率或点「停止」后手动再开
 6. **内存带宽**：打开面板后自动执行 `adb root`、挂载 debugfs、启用 DDR monitor，并每秒采样各 client 绘制曲线（默认显示 `cpu_a55_main` / `gpu` / `vpu`）
 7. **Sf-HWC层**：打开面板后每秒读取 SurfaceFlinger HWC layers，按表格顺序向上拉开绘制爆炸轴测图（CLIENT 虚线），并在下方列出图例
-8. **HWC状态**：打开面板后每秒读取 composer dumpsys 中的 NationalChip HWC 表；用 VPU View 爆炸轴测图展示屏幕位置，并按 Z 从大到小列出各层
+8. **VPU-HWC状态**：打开面板后每秒读取 composer dumpsys 中的 NationalChip HWC 表；用 VPU View 爆炸轴测图展示屏幕位置，并按 Z 从大到小列出各层
 9. **Sf-事件**：打开面板后每秒读取 SurfaceFlinger events，绘制 work / ready / last vsync 时序曲线
 10. **Sf-帧时间线**：打开面板后自动按秒刷新，可用「开始/结束」切换；横轴帧序号、纵轴 0–⌈末帧 Expected Present⌉₀₀ ms，并排绘制 Expected/Actual 的 Start→Present；点击某一帧查看 Layer 明细
 
