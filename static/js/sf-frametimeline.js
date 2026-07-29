@@ -337,10 +337,10 @@ window.SfFrametimelinePanel = (() => {
       const yMax = computeYMax(data);
       const vsync = pickVsyncPeriod(data);
       const frames = data.display_frames || [];
-      const firstJank = frames.find((f) => isJanky(f)) || null;
-      selectedIndex = firstJank ? firstJank.index : null;
+      const lastJank = [...frames].reverse().find((f) => isJanky(f)) || null;
+      selectedIndex = lastJank ? lastJank.index : null;
       draw(data);
-      renderDetail(firstJank);
+      renderDetail(lastJank);
 
       const sel = selectedIndex != null ? ` · 已选 #${selectedIndex}` : "";
       setMeta(
