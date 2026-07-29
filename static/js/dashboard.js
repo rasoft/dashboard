@@ -298,7 +298,12 @@ const Dashboard = (() => {
   }
 
   function addPanel(panelId, opts = {}) {
-    if (!PANEL_DEFS[panelId] || openPanels.has(panelId)) return;
+    if (!PANEL_DEFS[panelId]) return;
+    if (openPanels.has(panelId)) {
+      const node = grid.engine.nodes.find((n) => n.id === panelId);
+      bringToFront(node?.el);
+      return;
+    }
     const def = PANEL_DEFS[panelId];
     const geo = geometryFor(panelId, opts);
 
