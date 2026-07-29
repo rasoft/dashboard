@@ -95,6 +95,7 @@ window.DdrPanel = (() => {
   let timer = null;
   let running = false;
   let enabling = false;
+  let ticking = false;
   let labels = [];
   const enabled = {};
   const series = {};
@@ -386,14 +387,23 @@ window.DdrPanel = (() => {
   }
 
   async function tick() {
-    if (!running) return;
+    if (!running || ticking) return;
+    ticking = true;
     try {
       const sample = await fetchSample();
       pushSample(sample);
-      const warn = sample.warning ? ` · ${sample.warning}` : "";
-      setStatus(`监测中 · 最近更新 ${timeLabel()}${warn}`, !!sample.warning);
+      const parts = [];
+      if (sample.reenabled) parts.push("已自动重新初始化 monitor");
+      if (sample.warning) parts.push(sample.warning);
+      const extra = parts.length ? ` · ${parts.join(" · ")}` : "";
+      setStatus(`监测中 · 最近更新 ${timeLabel()}${extra}`, !!sample.warning);
     } catch (err) {
-      setStatus(String(err.message || err), true);
+      const msg = String(err.message || err);
+      setStatus(msg, true);
+      // Keep polling: after reboot, adb may return before debugfs is ready;
+      // backend will auto re-enable once status_raw is readable path is restored.
+    } finally {
+      ticking = false;
     }
   }
 

@@ -12,7 +12,7 @@
 - **Sf-事件面板**：经 ADB `dumpsys SurfaceFlinger --events` 按秒采样 `mWorkDuration` / `mReadyDuration` / `last vsync time` 并绘制曲线
 - 开始监测后按秒刷新实时网络带宽（WebRTC 收流统计）；未开播时显示预估
 - 打开 HDMI 面板后自动开始播放
-- 打开内存带宽面板后会自动启用 debugfs monitor 并按秒采样
+- 打开内存带宽面板后会自动启用 debugfs monitor 并按秒采样；设备重启 / adb 重连后若 status_raw 不可读，会自动重新 `adb root` + mount debugfs + enable
 - 打开 Sf-HWC层面板后自动按秒刷新
 - 打开 Sf-事件面板后自动按秒刷新
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
+import threading
+import time
 from typing import Any
 
 from app.services import adb
@@ -30,6 +32,21 @@ _FREQ_RE = re.compile(r"DDR\s+Frequency:\s*(\d+)\s*Hz", re.IGNORECASE)
 # Prefer matching by client name, then the 7 numeric columns that follow.
 # Works with or without a leading monitor id (mnt0/mnt3/...), and with \r.
 _NUMS = r"(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"
+
+_REENABLE_COOLDOWN_S = 12.0
+_reenable_lock = threading.Lock()
+_last_reenable_mono = 0.0
+
+_UNUSABLE_MARKERS = (
+    "permission denied",
+    "no such file",
+    "not found",
+    "can't open",
+    "cannot open",
+    "no such file or directory",
+    "is not a directory",
+    "operation not permitted",
+)
 
 
 def _shell(command: str, timeout: float = 8.0) -> subprocess.CompletedProcess[str]:
@@ -87,6 +104,42 @@ def enable_monitor() -> dict[str, Any]:
             return {"ok": False, "error": err, "steps": steps}
 
     return {"ok": True, "steps": steps}
+
+
+def _status_raw_unusable(result: subprocess.CompletedProcess[str]) -> bool:
+    """True when status_raw cannot be read (reboot / lost root / unmounted debugfs)."""
+    raw = (result.stdout or "").strip()
+    err = (result.stderr or "").strip()
+    blob = f"{err}\n{raw}".lower()
+    if result.returncode != 0:
+        if any(m in blob for m in _UNUSABLE_MARKERS):
+            return True
+        # Generic failure with no parsable table.
+        return "ddr frequency" not in blob and "monitor name" not in blob
+    if not raw:
+        return True
+    if any(m in blob for m in _UNUSABLE_MARKERS) and "ddr frequency" not in blob:
+        return True
+    return False
+
+
+def _read_status_raw() -> subprocess.CompletedProcess[str]:
+    return _shell(f"cat {STATUS_PATH}", timeout=8.0)
+
+
+def _maybe_reenable_monitor() -> dict[str, Any] | None:
+    """Re-run adb root + debugfs mount + enable, rate-limited.
+
+    Returns enable_monitor() result when an attempt was made, else None.
+    """
+    global _last_reenable_mono
+    with _reenable_lock:
+        now = time.monotonic()
+        if now - _last_reenable_mono < _REENABLE_COOLDOWN_S:
+            return None
+        _last_reenable_mono = now
+        logger.info("DDR status_raw inaccessible; re-initializing monitor")
+        return enable_monitor()
 
 
 def _row_dict(name: str, nums: tuple[str, ...], freq_hz: int | None) -> dict[str, Any]:
@@ -197,8 +250,13 @@ def sum_clients(clients: dict[str, Any]) -> dict[str, int]:
 def sample(
     targets: list[str] | tuple[str, ...] | None = None,
     target: str | None = None,
+    auto_reenable: bool = True,
 ) -> dict[str, Any]:
-    """Read one DDR monitor sample for one or more client names."""
+    """Read one DDR monitor sample for one or more client names.
+
+    If status_raw is missing/unreadable (common after device reboot when adb
+    reconnects), automatically re-run root/mount/enable once and retry.
+    """
     if targets is None:
         if target:
             targets = [target]
@@ -209,15 +267,46 @@ def sample(
     if not status["available"]:
         return {"ok": False, "error": "no adb device online"}
 
+    reenabled = False
     try:
-        result = _shell(f"cat {STATUS_PATH}", timeout=8.0)
+        result = _read_status_raw()
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"ok": False, "error": str(exc)}
+
+    if auto_reenable and _status_raw_unusable(result):
+        enabled = _maybe_reenable_monitor()
+        if enabled is not None:
+            if not enabled.get("ok"):
+                err = enabled.get("error") or "re-enable DDR monitor failed"
+                return {
+                    "ok": False,
+                    "error": err,
+                    "needs_reenable": True,
+                    "steps": enabled.get("steps"),
+                }
+            reenabled = True
+            try:
+                # adbd may still be settling after root
+                adb.run_adb(["wait-for-device"], timeout=15.0)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            try:
+                result = _read_status_raw()
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                return {"ok": False, "error": str(exc), "reenabled": True}
+            if _status_raw_unusable(result):
+                err = (result.stderr or result.stdout or "cat status_raw failed").strip()
+                return {
+                    "ok": False,
+                    "error": err or "status_raw still inaccessible after re-enable",
+                    "reenabled": True,
+                    "needs_reenable": True,
+                }
 
     raw = result.stdout or ""
     if result.returncode != 0:
         err = (result.stderr or raw or "cat status_raw failed").strip()
-        return {"ok": False, "error": err}
+        return {"ok": False, "error": err, "reenabled": reenabled}
 
     all_parsed = parse_all_unique_clients(raw)
     all_clients = all_parsed["clients"]
@@ -239,6 +328,7 @@ def sample(
             "clients": {},
             "total": total,
             "freq_hz": parsed["freq_hz"],
+            "reenabled": reenabled,
         }
 
     # Prefer requested targets; fall back to all unique clients for charts.
@@ -253,6 +343,7 @@ def sample(
         "all_clients": all_clients,
         "total": total,
         "missing": missing,
+        "reenabled": reenabled,
     }
     if missing:
         payload["warning"] = f"缺少: {', '.join(missing)}"
