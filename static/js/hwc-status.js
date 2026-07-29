@@ -1,6 +1,6 @@
-window.HwcPanel = (() => {
+window.HwcStatusPanel = (() => {
   const POLL_MS = 1000;
-  const FILL_ALPHA = 0.4;
+  const FILL_ALPHA = 0.35;
   const PALETTE = [
     [61, 156, 240],
     [43, 182, 115],
@@ -23,11 +23,12 @@ window.HwcPanel = (() => {
 
   function els() {
     return {
-      stage: root.querySelector("#hwc-stage"),
-      canvas: root.querySelector("#hwc-canvas"),
-      legend: root.querySelector("#hwc-legend"),
-      meta: root.querySelector("#hwc-meta"),
-      status: root.querySelector("#hwc-status"),
+      meta: root.querySelector("#hwc-st-meta"),
+      stage: root.querySelector("#hwc-st-stage"),
+      canvas: root.querySelector("#hwc-st-canvas"),
+      list: root.querySelector("#hwc-st-list"),
+      notes: root.querySelector("#hwc-st-notes"),
+      status: root.querySelector("#hwc-st-status"),
     };
   }
 
@@ -43,6 +44,31 @@ window.HwcPanel = (() => {
     if (meta) meta.textContent = text;
   }
 
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function fmtRect(r) {
+    if (!r) return "—";
+    return `${r.left} ${r.top} ${r.right} ${r.bottom}`;
+  }
+
+  function fmtBox(b) {
+    if (!b) return "—";
+    return `${b.x} ${b.y} ${b.width} ${b.height}`;
+  }
+
+  function fmtAlpha(a) {
+    if (!a) return "—";
+    if (a.raw) return a.raw;
+    if (a.float != null && a.byte != null) return `${a.float}/${a.byte}`;
+    return "—";
+  }
+
   function colorFor(index, alpha = FILL_ALPHA) {
     const [r, g, b] = PALETTE[index % PALETTE.length];
     return {
@@ -52,32 +78,28 @@ window.HwcPanel = (() => {
     };
   }
 
-  function shortName(name) {
-    if (!name) return "—";
-    if (name.length <= 72) return name;
-    return `${name.slice(0, 34)}…${name.slice(-34)}`;
+  function parseVirtualSize(notes) {
+    for (const note of notes || []) {
+      const m = String(note).match(/virtual\s*=\s*(\d+)\s*x\s*(\d+)/i);
+      if (m) return { width: Number(m[1]), height: Number(m[2]) };
+    }
+    return null;
   }
 
-  function isClientComp(layer) {
-    const t = String(layer?.comp_type || "")
-      .trim()
-      .toLowerCase();
-    return t === "client" || t.startsWith("client");
-  }
-
-  function frameView(layer) {
-    const fr = layer?.frame;
-    if (!fr) return null;
-    const x = Number(fr.left) || 0;
-    const y = Number(fr.top) || 0;
-    const width =
-      Number(fr.width) ||
-      Math.max(0, (Number(fr.right) || 0) - x);
-    const height =
-      Number(fr.height) ||
-      Math.max(0, (Number(fr.bottom) || 0) - y);
-    if (!(width > 0 || height > 0)) return null;
-    return { x, y, width: Math.max(1, width), height: Math.max(1, height) };
+  function displaySize(payload) {
+    const virtual = parseVirtualSize(payload?.notes);
+    let width = virtual?.width || 0;
+    let height = virtual?.height || 0;
+    (payload?.layers || []).forEach((layer) => {
+      const v = viewOf(layer);
+      if (!v) return;
+      width = Math.max(width, (v.x || 0) + (v.width || 0));
+      height = Math.max(height, (v.y || 0) + (v.height || 0));
+    });
+    return {
+      width: Math.max(1, width || 1920),
+      height: Math.max(1, height || 1080),
+    };
   }
 
   function resizeCanvas() {
@@ -97,6 +119,7 @@ window.HwcPanel = (() => {
 
   /** Rotate display (x,y) 270° CCW around Z (= prior 90° + 180°), then axonometric project. */
   function project(x, y, elev, size) {
+    // (x, y) -> (y, W - x) keeps the plane in the positive quadrant.
     const rx = y;
     const ry = size.width - x;
     return {
@@ -116,6 +139,21 @@ window.HwcPanel = (() => {
       { x: x + w, y: y + h },
       { x, y: y + h },
     ];
+  }
+
+  function viewOf(layer) {
+    const v = layer?.vpu_view;
+    if (v && (v.width > 0 || v.height > 0)) return v;
+    const d = layer?.disp_frame;
+    if (d) {
+      return {
+        x: d.left || 0,
+        y: d.top || 0,
+        width: d.width || Math.max(0, (d.right || 0) - (d.left || 0)),
+        height: d.height || Math.max(0, (d.bottom || 0) - (d.top || 0)),
+      };
+    }
+    return null;
   }
 
   function drawPoly(ctx, pts, fill, stroke, dashed) {
@@ -175,7 +213,7 @@ window.HwcPanel = (() => {
   }
 
   function draw(payload) {
-    const { canvas, legend } = els();
+    const { canvas } = els();
     if (!canvas) return;
     lastPayload = payload;
     const { w: cssW, h: cssH } = resizeCanvas();
@@ -187,21 +225,18 @@ window.HwcPanel = (() => {
     ctx.fillRect(0, 0, cssW, cssH);
 
     const layers = payload?.layers || [];
-    const size = {
-      width: Math.max(1, payload?.width || 1920),
-      height: Math.max(1, payload?.height || 1080),
-    };
+    const size = displaySize(payload);
     const pad = 16;
     const n = Math.max(1, layers.length);
+    // Keep explode gap modest so the stack stays readable in a small panel.
     const gap = Math.max(120, Math.min(size.width, size.height) * 0.18);
 
-    // Table order only: earlier rows at bottom, later rows explode upward.
-    const items = layers.map((layer, tableIndex) => ({
+    const items = layers.map((layer, i) => ({
       layer,
-      tableIndex,
-      colorIndex: layer.index ?? tableIndex,
-      elev: tableIndex * gap,
-      view: frameView(layer),
+      colorIndex: i,
+      // List is Z-desc; highest Z gets largest elevation.
+      elev: (n - 1 - i) * gap,
+      view: viewOf(layer),
     }));
 
     const baseCorners = [
@@ -232,18 +267,12 @@ window.HwcPanel = (() => {
       maxX = Math.max(maxX, p.sx);
       maxY = Math.max(maxY, p.sy);
     });
-    if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
-      renderLegend(layers);
-      return;
-    }
+    if (!Number.isFinite(minX) || !Number.isFinite(minY)) return;
 
     const spanX = Math.max(1, maxX - minX);
     const spanY = Math.max(1, maxY - minY);
     const scale = Math.min((cssW - pad * 2) / spanX, (cssH - pad * 2) / spanY);
-    if (!(scale > 0)) {
-      renderLegend(layers);
-      return;
-    }
+    if (!(scale > 0)) return;
     const ox = (cssW - spanX * scale) / 2 - minX * scale;
     const oy = (cssH - spanY * scale) / 2 - minY * scale;
 
@@ -252,6 +281,7 @@ window.HwcPanel = (() => {
       return { sx: ox + p.sx * scale, sy: oy + p.sy * scale };
     };
 
+    // Base display plane.
     drawPoly(
       ctx,
       baseCorners.map((c) => toScreen(c.x, c.y, 0)),
@@ -260,18 +290,24 @@ window.HwcPanel = (() => {
       false
     );
 
-    // Draw in table order: early rows first (bottom), later rows on top.
-    items.forEach(({ layer, colorIndex, elev, view }) => {
+    // Low Z first (bottom), high Z last (top).
+    [...items].reverse().forEach(({ layer, colorIndex, elev, view }) => {
       if (!view) return;
       const corners = layerCorners(view);
       const pts = corners.map((c) => toScreen(c.x, c.y, elev));
-      const colors = colorFor(colorIndex, FILL_ALPHA);
-      const client = isClientComp(layer);
+      const alpha =
+        layer.alpha?.float != null
+          ? Math.min(0.55, Math.max(0.22, Number(layer.alpha.float) * 0.45))
+          : 0.4;
+      const colors = colorFor(colorIndex, alpha);
+      const compType = String(layer.comp || "").trim().toLowerCase();
+      const isClient = compType === "client" || compType.startsWith("client");
 
       if (elev > 0) {
         ctx.strokeStyle = "rgba(142,160,178,0.28)";
         ctx.lineWidth = 1;
         ctx.setLineDash([3, 4]);
+        // Only front two corners to reduce clutter.
         [0, 1].forEach((i) => {
           const c = corners[i];
           const a = toScreen(c.x, c.y, 0);
@@ -284,61 +320,80 @@ window.HwcPanel = (() => {
         ctx.setLineDash([]);
       }
 
-      drawPoly(ctx, pts, colors.fill, colors.stroke, client);
+      drawPoly(ctx, pts, colors.fill, colors.stroke, isClient);
 
-      const fr = layer.frame || {};
-      const left = fr.left ?? view.x;
-      const top = fr.top ?? view.y;
-      const right = fr.right ?? view.x + view.width;
-      const bottom = fr.bottom ?? view.y + view.height;
-      drawOutsideLabel(ctx, pts, 0, `[${left},${top}]`);
-      drawOutsideLabel(ctx, pts, 2, `(${right},${bottom})`);
+      drawOutsideLabel(ctx, pts, 0, `Z${layer.z} #${layer.id}`);
     });
-
-    renderLegend(layers);
   }
 
-  function renderLegend(layers) {
-    const { legend } = els();
-    if (!legend) return;
-    legend.innerHTML = "";
+  function renderList(payload) {
+    const { list, notes } = els();
+    if (!list) return;
+
+    const layers = payload.layers || [];
     if (!layers.length) {
-      const empty = document.createElement("div");
-      empty.className = "hwc-legend-empty";
-      empty.textContent = "暂无图层";
-      legend.appendChild(empty);
-      return;
+      list.innerHTML = '<div class="hwc-st-empty">暂无图层</div>';
+    } else {
+      list.innerHTML = layers
+        .map((layer, i) => {
+          const colors = colorFor(i);
+          const comp = `${escapeHtml(layer.comp || "—")}${
+            layer.comp_star ? "*" : ""
+          }`;
+          const content = escapeHtml(layer.content || "—");
+          const compType = String(layer.comp || "").trim().toLowerCase();
+          const isClient =
+            compType === "client" || compType.startsWith("client");
+          const isDevice = compType === "device";
+          return [
+            `<div class="hwc-st-row${isDevice ? " device" : ""}${
+              isClient ? " client" : ""
+            }">`,
+            `<div class="hwc-st-row-head">`,
+            `<span class="hwc-st-swatch${isClient ? " dashed" : ""}" style="background:${colors.fill};border-color:${colors.stroke}"></span>`,
+            `<span class="hwc-st-z">Z ${escapeHtml(String(layer.z))}</span>`,
+            `<span class="hwc-st-id">ID ${escapeHtml(String(layer.id))}</span>`,
+            `<span class="hwc-st-content">${content}</span>`,
+            `<span class="hwc-st-comp">${comp}</span>`,
+            `<span class="hwc-st-vpu">${escapeHtml(layer.vpu || "—")}</span>`,
+            `<span class="hwc-st-format">${escapeHtml(layer.format || "—")}</span>`,
+            `<span class="hwc-st-alpha">α ${escapeHtml(fmtAlpha(layer.alpha))}</span>`,
+            `</div>`,
+            `<div class="hwc-st-row-meta">`,
+            `View ${escapeHtml(fmtBox(layer.vpu_view))}`,
+            ` · Disp ${escapeHtml(fmtRect(layer.disp_frame))}`,
+            ` · Crop ${escapeHtml(fmtRect(layer.source_crop))}`,
+            ` · Clip ${escapeHtml(fmtBox(layer.vpu_clip))}`,
+            `</div>`,
+            `</div>`,
+          ].join("");
+        })
+        .join("");
     }
-    // Legend: last table row (topmost) first.
-    [...layers].reverse().forEach((layer, i) => {
-      const colors = colorFor(layer.index ?? layers.length - 1 - i);
-      const row = document.createElement("div");
-      row.className = "hwc-legend-item";
-      if (layer.focused) row.classList.add("focused");
 
-      const swatch = document.createElement("span");
-      swatch.className = "hwc-swatch";
-      swatch.style.background = colors.fill;
-      swatch.style.borderColor = colors.stroke;
-      swatch.classList.add(isClientComp(layer) ? "dashed" : "solid");
+    if (notes) {
+      const noteLines = payload.notes || [];
+      notes.innerHTML = noteLines.length
+        ? noteLines
+            .map((n) => `<div class="hwc-st-note">${escapeHtml(n)}</div>`)
+            .join("")
+        : "";
+    }
+  }
 
-      const label = document.createElement("span");
-      label.className = "hwc-legend-label";
-      const z = Number.isFinite(layer.z) ? layer.z : "?";
-      const comp = layer.comp_type || "?";
-      label.textContent = `Z ${z} · ${comp} · ${shortName(layer.name)}`;
-      label.title = layer.name || "";
-
-      row.appendChild(swatch);
-      row.appendChild(label);
-      legend.appendChild(row);
+  function render(payload) {
+    draw(payload);
+    renderList(payload);
+    // List height can shrink the stage; redraw after layout settles.
+    requestAnimationFrame(() => {
+      if (lastPayload) draw(lastPayload);
     });
   }
 
-  async function fetchLayers() {
-    const res = await fetch("/api/hwc/layers");
+  async function fetchSample() {
+    const res = await fetch("/api/hwc/status");
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error || "获取 HWC 层失败");
+    if (!data.ok) throw new Error(data.error || "获取 HWC 状态失败");
     return data;
   }
 
@@ -346,14 +401,17 @@ window.HwcPanel = (() => {
     if (!running || fetching) return;
     fetching = true;
     try {
-      const data = await fetchLayers();
-      lastPayload = data;
-      draw(data);
-      requestAnimationFrame(() => {
-        if (lastPayload) draw(lastPayload);
-      });
-      const state = data.display_state ? ` · ${data.display_state}` : "";
-      setMeta(`${data.count} 层 · 轴测爆炸 ${data.width}×${data.height}${state}`);
+      const data = await fetchSample();
+      render(data);
+      const size = displaySize(data);
+      const name = data.display_name || "HWC";
+      const gens =
+        data.state_gen != null && data.validated_gen != null
+          ? ` · gen ${data.state_gen}/${data.validated_gen}`
+          : "";
+      setMeta(
+        `${name} · ${data.count} 层（Z 降序） · 轴测爆炸 View ${size.width}×${size.height}${gens}`
+      );
       setStatus(
         `监测中 · 最近更新 ${new Date().toLocaleTimeString("zh-CN", {
           hour12: false,
@@ -388,13 +446,8 @@ window.HwcPanel = (() => {
   }
 
   function mount(panelEl) {
-    root = panelEl.querySelector(".hwc");
+    root = panelEl.querySelector(".hwc-st");
     if (!root) return;
-
-    if (root.dataset.bound !== "1") {
-      root.dataset.bound = "1";
-      window.addEventListener("resize", onResize);
-    }
 
     const { stage } = els();
     if (stage && typeof ResizeObserver !== "undefined") {
@@ -413,7 +466,6 @@ window.HwcPanel = (() => {
 
   function unmount() {
     stop();
-    window.removeEventListener("resize", onResize);
     if (resizeObserver) {
       resizeObserver.disconnect();
       resizeObserver = null;

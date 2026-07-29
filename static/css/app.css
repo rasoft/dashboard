@@ -259,6 +259,7 @@ body {
   flex: 1;
   overflow: auto;
   padding: 0.75rem;
+  min-height: 0;
 }
 
 .panel[data-panel-id="remote"] .panel-body {
@@ -266,6 +267,21 @@ body {
   display: flex;
   flex-direction: column;
   padding: 0.5rem 0.4rem 0.35rem;
+}
+
+.panel[data-panel-id="hwc"] .panel-body,
+.panel[data-panel-id="hwc-status"] .panel-body,
+.panel[data-panel-id="sf-frametimeline"] .panel-body {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel[data-panel-id="hwc"] .panel-body > .hwc,
+.panel[data-panel-id="hwc-status"] .panel-body > .hwc-st,
+.panel[data-panel-id="sf-frametimeline"] .panel-body > .sf-ftl {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* Remote — photo with clickable hotspots */
@@ -621,8 +637,8 @@ body {
 
 .hwc-stage {
   position: relative;
-  flex: 1 1 auto;
-  min-height: 160px;
+  flex: 1 1 0;
+  min-height: 180px;
   border-radius: 8px;
   border: 1px solid var(--line);
   background: rgba(0, 0, 0, 0.28);
@@ -706,6 +722,149 @@ body {
 }
 
 .hwc-status.error {
+  color: var(--danger);
+}
+
+/* NationalChip HWC status list */
+.hwc-st {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  height: 100%;
+  min-height: 0;
+}
+
+.hwc-st-meta {
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  background: rgba(61, 156, 240, 0.1);
+  border: 1px solid rgba(61, 156, 240, 0.28);
+  color: #b9d9f8;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.hwc-st-stage {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 180px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+
+.hwc-st-stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hwc-st-list {
+  flex: 0 0 auto;
+  max-height: 34%;
+  min-height: 72px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-right: 0.15rem;
+}
+
+.hwc-st-empty {
+  color: var(--muted);
+  font-size: 0.8rem;
+  padding: 0.4rem 0.2rem;
+}
+
+.hwc-st-row {
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 3px solid rgba(61, 156, 240, 0.55);
+}
+
+.hwc-st-row.device {
+  border-left-color: rgba(43, 182, 115, 0.85);
+  background: rgba(43, 182, 115, 0.07);
+}
+
+.hwc-st-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  align-items: baseline;
+  font-size: 0.8rem;
+  color: #d5e2ef;
+  font-variant-numeric: tabular-nums;
+}
+
+.hwc-st-swatch {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1.5px solid currentColor;
+  box-sizing: border-box;
+  align-self: center;
+}
+
+.hwc-st-swatch.dashed {
+  border-style: dashed;
+}
+
+.hwc-st-z {
+  font-weight: 650;
+  color: #fff;
+  min-width: 2.6rem;
+}
+
+.hwc-st-id {
+  color: var(--muted);
+}
+
+.hwc-st-content {
+  font-weight: 600;
+}
+
+.hwc-st-comp,
+.hwc-st-vpu,
+.hwc-st-format,
+.hwc-st-alpha {
+  color: #b7c7d7;
+}
+
+.hwc-st-row-meta {
+  margin-top: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+
+.hwc-st-notes {
+  flex: 0 0 auto;
+  max-height: 28%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.hwc-st-note {
+  font-size: 0.72rem;
+  color: #9eb0c2;
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
+.hwc-st-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.hwc-st-status.error {
   color: var(--danger);
 }
 

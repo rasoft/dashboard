@@ -43,6 +43,17 @@ const PANEL_DEFS = {
     y: 18,
     defaultOpen: false,
   },
+  "hwc-status": {
+    id: "hwc-status",
+    title: "HWC状态",
+    w: 7,
+    h: 12,
+    minW: 5,
+    minH: 8,
+    x: 6,
+    y: 18,
+    defaultOpen: false,
+  },
   "sf-events": {
     id: "sf-events",
     title: "Sf-事件",
@@ -276,6 +287,8 @@ const Dashboard = (() => {
       body.appendChild(cloneTemplate("tpl-ddr"));
     } else if (panelId === "hwc") {
       body.appendChild(cloneTemplate("tpl-hwc"));
+    } else if (panelId === "hwc-status") {
+      body.appendChild(cloneTemplate("tpl-hwc-status"));
     } else if (panelId === "sf-events") {
       body.appendChild(cloneTemplate("tpl-sf-events"));
     } else if (panelId === "sf-frametimeline") {
@@ -331,6 +344,9 @@ const Dashboard = (() => {
     if (panelId === "hdmi" && window.HdmiPanel) window.HdmiPanel.mount(panelEl);
     if (panelId === "ddr" && window.DdrPanel) window.DdrPanel.mount(panelEl);
     if (panelId === "hwc" && window.HwcPanel) window.HwcPanel.mount(panelEl);
+    if (panelId === "hwc-status" && window.HwcStatusPanel) {
+      window.HwcStatusPanel.mount(panelEl);
+    }
     if (panelId === "sf-events" && window.SfEventsPanel) {
       window.SfEventsPanel.mount(panelEl);
     }
@@ -355,6 +371,9 @@ const Dashboard = (() => {
     }
     if (panelId === "hwc" && window.HwcPanel?.unmount) {
       window.HwcPanel.unmount();
+    }
+    if (panelId === "hwc-status" && window.HwcStatusPanel?.unmount) {
+      window.HwcStatusPanel.unmount();
     }
     if (panelId === "sf-events" && window.SfEventsPanel?.unmount) {
       window.SfEventsPanel.unmount();
