@@ -466,6 +466,17 @@ body {
   font-size: 0.82rem;
 }
 
+.hdmi-key-feedback {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.hdmi-key-feedback.error {
+  color: var(--danger);
+}
+
 /* DDR memory bandwidth */
 .ddr {
   display: flex;

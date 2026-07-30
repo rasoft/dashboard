@@ -11,6 +11,47 @@ window.HdmiPanel = (() => {
   let lastStats = null;
   let unmuteTimer = null;
   let unmuteGestureHandler = null;
+  let keyHandler = null;
+  let keySending = false;
+
+  const KEYBOARD_MAP = {
+    ArrowUp: "DPAD_UP",
+    ArrowDown: "DPAD_DOWN",
+    ArrowLeft: "DPAD_LEFT",
+    ArrowRight: "DPAD_RIGHT",
+    Enter: "DPAD_CENTER",
+    NumpadEnter: "DPAD_CENTER",
+    Backspace: "BACK",
+    AudioVolumeUp: "VOLUME_UP",
+    AudioVolumeDown: "VOLUME_DOWN",
+    VolumeUp: "VOLUME_UP",
+    VolumeDown: "VOLUME_DOWN",
+    PageUp: "VOLUME_UP",
+    PageDown: "VOLUME_DOWN",
+    "+": "VOLUME_UP",
+    "=": "VOLUME_UP",
+    "-": "VOLUME_DOWN",
+    _: "VOLUME_DOWN",
+    p: "POWER",
+    P: "POWER",
+    b: "BOOKMARK",
+    B: "BOOKMARK",
+    a: "ASSISTANT",
+    A: "ASSISTANT",
+    s: "SETTINGS",
+    S: "SETTINGS",
+    h: "HOME",
+    H: "HOME",
+    m: "MUTE",
+    M: "MUTE",
+  };
+
+  const CODE_MAP = {
+    NumpadAdd: "VOLUME_UP",
+    NumpadSubtract: "VOLUME_DOWN",
+    Equal: "VOLUME_UP",
+    Minus: "VOLUME_DOWN",
+  };
 
   function els() {
     return {
@@ -22,7 +63,71 @@ window.HdmiPanel = (() => {
       video: root.querySelector("#hdmi-video"),
       overlay: root.querySelector("#hdmi-overlay"),
       status: root.querySelector("#hdmi-status"),
+      keyFeedback: root.querySelector("#hdmi-key-feedback"),
     };
+  }
+
+  function setKeyFeedback(text, isError = false) {
+    const { keyFeedback } = els();
+    if (!keyFeedback) return;
+    keyFeedback.textContent = text;
+    keyFeedback.classList.toggle("error", !!isError);
+  }
+
+  function isTypingTarget(el) {
+    if (!el || !(el instanceof Element)) return false;
+    const tag = el.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    return el.isContentEditable;
+  }
+
+  async function sendAdbKey(key) {
+    if (!root || !document.body.contains(root)) return;
+    if (keySending) return;
+    keySending = true;
+    setKeyFeedback(`发送 ${key}…`, false);
+    try {
+      const res = await fetch("/api/remote/key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setKeyFeedback(data.error || "发送失败", true);
+        return;
+      }
+      setKeyFeedback(`已发送 ${key}`);
+    } catch (err) {
+      setKeyFeedback(String(err.message || err), true);
+    } finally {
+      keySending = false;
+    }
+  }
+
+  function onAdbKeyDown(e) {
+    if (!root || !document.body.contains(root)) return;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (isTypingTarget(e.target)) return;
+
+    const mapped = KEYBOARD_MAP[e.key] || CODE_MAP[e.code];
+    if (!mapped) return;
+
+    e.preventDefault();
+    if (e.repeat) return;
+    sendAdbKey(mapped);
+  }
+
+  function bindKeyboard() {
+    if (keyHandler) return;
+    keyHandler = onAdbKeyDown;
+    window.addEventListener("keydown", keyHandler, true);
+  }
+
+  function unbindKeyboard() {
+    if (!keyHandler) return;
+    window.removeEventListener("keydown", keyHandler, true);
+    keyHandler = null;
   }
 
   function setStatus(text) {
@@ -559,31 +664,53 @@ window.HdmiPanel = (() => {
 
   function mount(panelEl) {
     root = panelEl.querySelector(".hdmi");
-    if (!root || root.dataset.bound === "1") return;
-    root.dataset.bound = "1";
+    if (!root) return;
 
-    const { resolution, audio, toggle, unmute } = els();
-    resolution.addEventListener("change", () => {
-      if (!pc) refreshEstimateBandwidth();
-    });
-    audio.addEventListener("change", () => {
-      if (!pc) refreshEstimateBandwidth();
-    });
-    toggle.addEventListener("click", () => onToggleClick());
-    if (unmute) {
-      unmute.addEventListener("click", () => {
-        tryUnmute(false).then((ok) => {
-          if (ok) {
-            stopUnmuteAssist();
-            setStatus("已取消静音");
-          }
-        });
+    if (root.dataset.bound !== "1") {
+      root.dataset.bound = "1";
+      const { resolution, audio, toggle, unmute } = els();
+      resolution.addEventListener("change", () => {
+        if (!pc) refreshEstimateBandwidth();
       });
+      audio.addEventListener("change", () => {
+        if (!pc) refreshEstimateBandwidth();
+      });
+      toggle.addEventListener("click", () => onToggleClick());
+      if (unmute) {
+        unmute.addEventListener("click", () => {
+          tryUnmute(false).then((ok) => {
+            if (ok) {
+              stopUnmuteAssist();
+              setStatus("已取消静音");
+            }
+          });
+        });
+      }
     }
+
+    setKeyFeedback("键盘：方向/确认/返回/音量 · P电源 B列表 A助手 S设置 H主页 M静音");
+    bindKeyboard();
     refreshEstimateBandwidth();
     ensureSocket();
     start().catch((err) => console.warn("auto start hdmi", err));
   }
 
-  return { mount, start, stop };
+  function unmount() {
+    unbindKeyboard();
+    starting = false;
+    try {
+      const sock = ensureSocket();
+      if (sock.connected) sock.emit("hdmi:stop", {});
+    } catch {
+      /* ignore */
+    }
+    try {
+      cleanupPc();
+    } catch {
+      /* ignore */
+    }
+    root = null;
+  }
+
+  return { mount, unmount, start, stop };
 })();

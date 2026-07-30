@@ -11,6 +11,7 @@ const PANEL_DEFS = {
     x: 0,
     y: 0,
     lockedSize: true,
+    defaultOpen: false,
   },
   hdmi: {
     id: "hdmi",
@@ -361,7 +362,8 @@ const Dashboard = (() => {
 
   function closePanel(panelId) {
     if (panelId === "hdmi" && window.HdmiPanel) {
-      window.HdmiPanel.stop().catch(() => {});
+      if (window.HdmiPanel.unmount) window.HdmiPanel.unmount();
+      else window.HdmiPanel.stop().catch(() => {});
     }
     if (panelId === "remote" && window.RemotePanel?.unmount) {
       window.RemotePanel.unmount();
