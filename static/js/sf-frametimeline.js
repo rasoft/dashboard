@@ -23,21 +23,12 @@ window.SfFrametimelinePanel = (() => {
 
   function els() {
     return {
-      toggle: root.querySelector("#sf-ftl-toggle"),
       meta: root.querySelector("#sf-ftl-meta"),
       stage: root.querySelector("#sf-ftl-stage"),
       canvas: root.querySelector("#sf-ftl-canvas"),
       detail: root.querySelector("#sf-ftl-detail"),
       status: root.querySelector("#sf-ftl-status"),
     };
-  }
-
-  function setButtons() {
-    const { toggle } = els();
-    if (!toggle) return;
-    toggle.dataset.running = running ? "1" : "0";
-    toggle.textContent = running ? "结束" : "开始";
-    toggle.classList.toggle("btn-ghost", !!running);
   }
 
   function setStatus(text, isError = false) {
@@ -331,6 +322,7 @@ window.SfFrametimelinePanel = (() => {
 
   async function tick() {
     if (!running || fetching) return;
+    if (window.Dashboard?.isPaused?.()) return;
     fetching = true;
     try {
       const data = await fetchSample();
@@ -365,14 +357,11 @@ window.SfFrametimelinePanel = (() => {
       timer = null;
     }
     running = false;
-    setButtons();
-    setStatus("已结束");
   }
 
   function start() {
     if (running) return;
     running = true;
-    setButtons();
     setStatus("监测中…");
     tick();
     timer = setInterval(tick, POLL_MS);
@@ -383,24 +372,17 @@ window.SfFrametimelinePanel = (() => {
     else resizeCanvas();
   }
 
-  function onToggleClick() {
-    if (running) stop();
-    else start();
-  }
-
   function mount(panelEl) {
     root = panelEl.querySelector(".sf-ftl");
     if (!root) return;
 
-    const { canvas, stage, toggle } = els();
+    const { canvas, stage } = els();
     if (root.dataset.bound !== "1") {
       root.dataset.bound = "1";
       if (canvas) canvas.addEventListener("click", onCanvasClick);
-      toggle?.addEventListener("click", () => onToggleClick());
     }
 
     renderDetail(null);
-    setButtons();
     setStatus("等待操作");
 
     if (stage && typeof ResizeObserver !== "undefined") {

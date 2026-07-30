@@ -42,6 +42,7 @@
         </div>
       </div>
       <button type="button" class="btn btn-ghost" id="btn-refresh-status">刷新状态</button>
+      <button type="button" class="btn" id="btn-pause-toggle" data-paused="0">暂停</button>
     </div>
   </header>
 
@@ -137,8 +138,6 @@
   <template id="tpl-ddr">
     <div class="ddr">
       <div class="ddr-controls">
-        <button type="button" class="btn" id="ddr-start">开始监测</button>
-        <button type="button" class="btn btn-ghost" id="ddr-stop" disabled>停止</button>
         <button type="button" class="btn btn-ghost" id="ddr-clear">清空曲线</button>
       </div>
       <div class="ddr-track-toggles" id="ddr-track-toggles" aria-label="曲线图开关">
@@ -262,9 +261,6 @@
 
   <template id="tpl-sf-frametimeline">
     <div class="sf-ftl">
-      <div class="sf-ftl-controls">
-        <button type="button" class="btn" id="sf-ftl-toggle" data-running="0">开始</button>
-      </div>
       <div class="sf-ftl-meta" id="sf-ftl-meta">等待采样…</div>
       <div class="sf-ftl-stage" id="sf-ftl-stage">
         <canvas id="sf-ftl-canvas" aria-label="SurfaceFlinger FrameTimeline 帧序列柱状图"></canvas>

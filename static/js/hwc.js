@@ -371,6 +371,7 @@ window.HwcPanel = (() => {
 
   async function tick() {
     if (!running || fetching) return;
+    if (window.Dashboard?.isPaused?.()) return;
     fetching = true;
     try {
       const data = await fetchLayers();

@@ -109,8 +109,6 @@ window.DdrPanel = (() => {
 
   function els() {
     const out = {
-      start: root.querySelector("#ddr-start"),
-      stop: root.querySelector("#ddr-stop"),
       clear: root.querySelector("#ddr-clear"),
       status: root.querySelector("#ddr-status"),
       toggles: root.querySelector("#ddr-track-toggles"),
@@ -149,12 +147,6 @@ window.DdrPanel = (() => {
 
   function setMetaLine(el, text) {
     if (el) el.textContent = text;
-  }
-
-  function setButtons() {
-    const { start, stop } = els();
-    if (start) start.disabled = running || enabling;
-    if (stop) stop.disabled = !running;
   }
 
   function formatMbps(bps) {
@@ -388,6 +380,7 @@ window.DdrPanel = (() => {
 
   async function tick() {
     if (!running || ticking) return;
+    if (window.Dashboard?.isPaused?.()) return;
     ticking = true;
     try {
       const sample = await fetchSample();
@@ -413,27 +406,23 @@ window.DdrPanel = (() => {
       timer = null;
     }
     running = false;
-    setButtons();
   }
 
   async function start() {
     if (running || enabling) return;
     enabling = true;
-    setButtons();
     setStatus("正在启用 DDR monitor…");
     try {
       await enable();
       ensureVisibleCharts();
       running = true;
       enabling = false;
-      setButtons();
       setStatus("监测中…");
       await tick();
       timer = setInterval(tick, POLL_MS);
     } catch (err) {
       enabling = false;
       running = false;
-      setButtons();
       setStatus(String(err.message || err), true);
     }
   }
@@ -460,15 +449,12 @@ window.DdrPanel = (() => {
 
     if (root.dataset.bound !== "1") {
       root.dataset.bound = "1";
-      const { start: startBtn, stop: stopBtn, clear: clearBtn } = els();
-      startBtn?.addEventListener("click", () => start());
-      stopBtn?.addEventListener("click", () => stop());
+      const { clear: clearBtn } = els();
       clearBtn?.addEventListener("click", () => clearSeries());
       bindToggles();
     }
 
     applyVisibility();
-    setButtons();
     start();
   }
 

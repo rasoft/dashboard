@@ -838,13 +838,6 @@ body {
   min-height: 0;
 }
 
-.sf-ftl-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-  align-items: center;
-}
-
 .sf-ftl-meta {
   padding: 0.45rem 0.65rem;
   border-radius: 8px;

@@ -91,6 +91,45 @@ const Dashboard = (() => {
   let grid = null;
   const openPanels = new Set();
   let clamping = false;
+  let paused = false;
+  const pauseListeners = new Set();
+  let statusTimer = null;
+
+  function isPaused() {
+    return paused;
+  }
+
+  function onPauseChange(fn) {
+    if (typeof fn !== "function") return () => {};
+    pauseListeners.add(fn);
+    return () => pauseListeners.delete(fn);
+  }
+
+  function setPauseButton() {
+    const btn = document.getElementById("btn-pause-toggle");
+    if (!btn) return;
+    btn.dataset.paused = paused ? "1" : "0";
+    btn.textContent = paused ? "继续" : "暂停";
+    btn.classList.toggle("btn-ghost", !paused);
+  }
+
+  function setPaused(next) {
+    const value = !!next;
+    if (paused === value) return;
+    paused = value;
+    setPauseButton();
+    pauseListeners.forEach((fn) => {
+      try {
+        fn(paused);
+      } catch (err) {
+        console.warn("pause listener", err);
+      }
+    });
+  }
+
+  function togglePaused() {
+    setPaused(!paused);
+  }
 
   function cloneTemplate(id) {
     const tpl = document.getElementById(id);
@@ -540,6 +579,11 @@ const Dashboard = (() => {
     grid.on("resizestart", (_event, el) => bringToFront(el));
     setupAddMenu();
     document.getElementById("btn-refresh-status").addEventListener("click", refreshStatus);
+    const pauseBtn = document.getElementById("btn-pause-toggle");
+    if (pauseBtn) {
+      pauseBtn.addEventListener("click", () => togglePaused());
+      setPauseButton();
+    }
     window.addEventListener("resize", () => {
       // Defer until layout settles so workspace height is non-zero.
       requestAnimationFrame(() => applyWorkspaceBounds());
@@ -547,10 +591,23 @@ const Dashboard = (() => {
     restore();
     requestAnimationFrame(() => applyWorkspaceBounds());
     refreshStatus();
-    setInterval(refreshStatus, 8000);
+    statusTimer = setInterval(() => {
+      if (!paused) refreshStatus();
+    }, 8000);
   }
 
-  return { init, addPanel, closePanel, refreshStatus };
+  return {
+    init,
+    addPanel,
+    closePanel,
+    refreshStatus,
+    isPaused,
+    setPaused,
+    togglePaused,
+    onPauseChange,
+  };
 })();
+
+window.Dashboard = Dashboard;
 
 document.addEventListener("DOMContentLoaded", () => Dashboard.init());

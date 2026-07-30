@@ -13,6 +13,8 @@ window.HdmiPanel = (() => {
   let unmuteGestureHandler = null;
   let keyHandler = null;
   let keySending = false;
+  let pauseUnsub = null;
+  let mediaPausedByDashboard = false;
 
   const KEYBOARD_MAP = {
     ArrowUp: "DPAD_UP",
@@ -196,10 +198,61 @@ window.HdmiPanel = (() => {
 
   function startStatsMonitor() {
     stopStatsMonitor();
+    if (window.Dashboard?.isPaused?.()) return;
     statsTimer = setInterval(() => {
+      if (window.Dashboard?.isPaused?.()) return;
       updateLiveBandwidth().catch(() => {});
     }, 1000);
     updateLiveBandwidth().catch(() => {});
+  }
+
+  /** Freeze local playback; keep WebRTC connected. */
+  function pauseMediaForDashboard() {
+    const { video } = els();
+    if (!video) return;
+    mediaPausedByDashboard = true;
+    stopStatsMonitor();
+    try {
+      video.pause();
+    } catch {
+      /* ignore */
+    }
+    setOverlay("已暂停", true);
+  }
+
+  /**
+   * Resume playback and drop frames buffered while paused by
+   * re-attaching the live MediaStream (jump to live edge).
+   */
+  async function resumeMediaForDashboard() {
+    const { video } = els();
+    if (!video) return;
+    mediaPausedByDashboard = false;
+    const stream = video.srcObject;
+    if (stream instanceof MediaStream) {
+      video.srcObject = null;
+      // Force the element to drop queued frames, then bind the live stream again.
+      await new Promise((r) => requestAnimationFrame(() => r()));
+      video.srcObject = stream;
+    }
+    const playing = await playMuted(video);
+    if (playing) setOverlay("", false);
+    else setOverlay("已继续（等待画面）", true);
+
+    const { audio } = els();
+    if (audio?.checked) {
+      startUnmuteAssist();
+      tryUnmute(false);
+    }
+    if (pc && !["closed", "failed"].includes(pc.connectionState)) {
+      startStatsMonitor();
+    }
+  }
+
+  function onDashboardPauseChange(paused) {
+    if (!root || !document.body.contains(root)) return;
+    if (paused) pauseMediaForDashboard();
+    else resumeMediaForDashboard().catch((err) => console.warn("resume media", err));
   }
 
   async function updateLiveBandwidth() {
@@ -573,6 +626,20 @@ window.HdmiPanel = (() => {
       }
       video.srcObject.addTrack(ev.track);
 
+      if (window.Dashboard?.isPaused?.()) {
+        mediaPausedByDashboard = true;
+        try {
+          video.pause();
+        } catch {
+          /* ignore */
+        }
+        setOverlay("已暂停", true);
+        if (ev.track.kind === "video") {
+          setStatus("画面已连接（全局已暂停）");
+        }
+        return;
+      }
+
       // Always start muted so autoplay works on page reload without a gesture.
       playMuted(video).then((playing) => {
         if (playing) {
@@ -617,6 +684,10 @@ window.HdmiPanel = (() => {
       if (!pc) return;
       setStatus(`连接状态：${pc.connectionState}`);
       if (pc.connectionState === "connected") {
+        if (window.Dashboard?.isPaused?.()) {
+          pauseMediaForDashboard();
+          return;
+        }
         startStatsMonitor();
         startUnmuteAssist();
       }
@@ -690,6 +761,12 @@ window.HdmiPanel = (() => {
 
     setKeyFeedback("键盘：方向/确认/返回/音量 · P电源 B列表 A助手 S设置 H主页 M静音");
     bindKeyboard();
+    if (!pauseUnsub && window.Dashboard?.onPauseChange) {
+      pauseUnsub = window.Dashboard.onPauseChange(onDashboardPauseChange);
+    }
+    if (window.Dashboard?.isPaused?.()) {
+      pauseMediaForDashboard();
+    }
     refreshEstimateBandwidth();
     ensureSocket();
     start().catch((err) => console.warn("auto start hdmi", err));
@@ -697,6 +774,11 @@ window.HdmiPanel = (() => {
 
   function unmount() {
     unbindKeyboard();
+    if (pauseUnsub) {
+      pauseUnsub();
+      pauseUnsub = null;
+    }
+    mediaPausedByDashboard = false;
     starting = false;
     try {
       const sock = ensureSocket();
