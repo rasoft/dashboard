@@ -4,7 +4,7 @@ const PANEL_DEFS = {
     title: "输入",
     w: 5,
     h: 5,
-    minW: 3,
+    minW: 4,
     minH: 4,
     x: 0,
     y: 0,
@@ -29,7 +29,7 @@ const PANEL_DEFS = {
     title: "操作台",
     w: 9,
     h: 14,
-    minW: 5,
+    minW: 4,
     minH: 7,
     x: 3,
     y: 0,
@@ -39,7 +39,7 @@ const PANEL_DEFS = {
     title: "内存带宽",
     w: 9,
     h: 16,
-    minW: 5,
+    minW: 4,
     minH: 10,
     x: 3,
     y: 14,
@@ -60,7 +60,7 @@ const PANEL_DEFS = {
     title: "IComposer - VPU",
     w: 7,
     h: 12,
-    minW: 5,
+    minW: 4,
     minH: 8,
     x: 6,
     y: 18,
@@ -82,7 +82,7 @@ const PANEL_DEFS = {
     title: "SurfaceFlinger - frametimeline",
     w: 8,
     h: 12,
-    minW: 5,
+    minW: 4,
     minH: 8,
     x: 0,
     y: 30,
@@ -104,7 +104,7 @@ const PANEL_DEFS = {
     title: "proc - diskstats",
     w: 9,
     h: 12,
-    minW: 5,
+    minW: 4,
     minH: 8,
     x: 0,
     y: 18,
@@ -260,11 +260,33 @@ const Dashboard = (() => {
     };
   }
 
+  /**
+   * Dashboard panels are allowed to overlap. GridStack still rejects a drag when
+   * the drop cell intersects another widget and directionCollideCoverage finds
+   * no clear push target — the item then snaps back on mouseup. Neutralize
+   * collision checks so free placement works.
+   */
+  function installOverlapFix() {
+    const engine = grid.engine;
+    if (!engine || engine._overlapFixInstalled) return;
+    engine._overlapFixInstalled = true;
+    engine.collide = function () {
+      return undefined;
+    };
+    engine.collideAll = function () {
+      return [];
+    };
+    engine._fixCollisions = function () {
+      return false;
+    };
+  }
+
   function applyWorkspaceBounds() {
     if (!grid) return;
     grid.opts.maxRow = 0;
     if (grid.engine) grid.engine.maxRow = 0;
     installPartialBoundFix();
+    installOverlapFix();
     clampAllPanels();
   }
 
@@ -662,10 +684,9 @@ const Dashboard = (() => {
       resizable: { handles: "e, se, s, sw, w" },
     });
 
-    // GridStack has no first-class overlap option; disable collision resolution.
-    if (grid.engine && typeof grid.engine._fixCollisions === "function") {
-      grid.engine._fixCollisions = function () {};
-    }
+    // GridStack has no first-class overlap option; disable collision checks so
+    // panels can stack freely without snapping back on drop.
+    installOverlapFix();
     installPartialBoundFix();
 
     grid.on("change", () => {

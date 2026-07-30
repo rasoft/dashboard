@@ -725,7 +725,6 @@ body {
 
 .hwc-legend-wrap {
   flex: 0 0 auto;
-  max-height: 34%;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -738,11 +737,10 @@ body {
 }
 
 .hwc-legend {
-  overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-  padding-right: 0.2rem;
+  overflow: visible;
 }
 
 .hwc-legend-empty {
