@@ -240,6 +240,26 @@ body {
 .panel-actions {
   display: flex;
   gap: 0.25rem;
+  align-items: center;
+}
+
+.panel-header-btn {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.panel-header-btn:hover {
+  border-color: var(--line);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .icon-btn {
@@ -531,13 +551,6 @@ body {
   gap: 0.65rem;
   height: 100%;
   min-height: 0;
-}
-
-.ddr-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-  align-items: center;
 }
 
 .ddr-track-toggles {
@@ -835,13 +848,6 @@ body {
   gap: 0.55rem;
   height: 100%;
   min-height: 0;
-}
-
-.sf-events-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  align-items: center;
 }
 
 .sf-events-meta {

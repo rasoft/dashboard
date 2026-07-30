@@ -354,12 +354,30 @@ const Dashboard = (() => {
       body.appendChild(cloneTemplate("tpl-hdmi"));
     } else if (panelId === "ddr") {
       body.appendChild(cloneTemplate("tpl-ddr"));
+      const actions = panel.querySelector(".panel-actions");
+      const clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.id = "ddr-clear";
+      clearBtn.className = "panel-header-btn";
+      clearBtn.textContent = "清空曲线";
+      clearBtn.title = "清空曲线";
+      clearBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+      actions?.insertBefore(clearBtn, actions.firstChild);
     } else if (panelId === "hwc") {
       body.appendChild(cloneTemplate("tpl-hwc"));
     } else if (panelId === "hwc-status") {
       body.appendChild(cloneTemplate("tpl-hwc-status"));
     } else if (panelId === "sf-events") {
       body.appendChild(cloneTemplate("tpl-sf-events"));
+      const actions = panel.querySelector(".panel-actions");
+      const clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.id = "sf-events-clear";
+      clearBtn.className = "panel-header-btn";
+      clearBtn.textContent = "清空曲线";
+      clearBtn.title = "清空曲线";
+      clearBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+      actions?.insertBefore(clearBtn, actions.firstChild);
     } else if (panelId === "sf-frametimeline") {
       body.appendChild(cloneTemplate("tpl-sf-frametimeline"));
     }
@@ -371,7 +389,7 @@ const Dashboard = (() => {
 
     // Click anywhere on the panel (header or body) to raise it above siblings.
     panel.addEventListener("pointerdown", (e) => {
-      if (e.target.closest('[data-action="close"]')) return;
+      if (e.target.closest(".panel-actions")) return;
       const item = panel.closest(".grid-stack-item");
       bringToFront(item);
     });
@@ -611,7 +629,6 @@ const Dashboard = (() => {
     grid.on("dragstart", (_event, el) => bringToFront(el));
     grid.on("resizestart", (_event, el) => bringToFront(el));
     setupAddMenu();
-    document.getElementById("btn-refresh-status").addEventListener("click", refreshStatus);
     const pauseBtn = document.getElementById("btn-pause-toggle");
     if (pauseBtn) {
       pauseBtn.title = "暂停 / 继续（空格）";

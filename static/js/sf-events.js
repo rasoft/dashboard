@@ -3,6 +3,7 @@ window.SfEventsPanel = (() => {
   const POLL_MS = 1000;
 
   let root = null;
+  let panelRoot = null;
   let chart = null;
   let timer = null;
   let running = false;
@@ -15,11 +16,12 @@ window.SfEventsPanel = (() => {
   };
 
   function els() {
+    const scope = panelRoot || root;
     return {
       meta: root.querySelector("#sf-events-meta"),
       canvas: root.querySelector("#sf-events-chart"),
       status: root.querySelector("#sf-events-status"),
-      clear: root.querySelector("#sf-events-clear"),
+      clear: scope?.querySelector("#sf-events-clear"),
     };
   }
 
@@ -196,13 +198,17 @@ window.SfEventsPanel = (() => {
   }
 
   function mount(panelEl) {
+    panelRoot = panelEl;
     root = panelEl.querySelector(".sf-events");
     if (!root) return;
 
     if (root.dataset.bound !== "1") {
       root.dataset.bound = "1";
       const { clear } = els();
-      if (clear) clear.addEventListener("click", () => clearSeries());
+      clear?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        clearSeries();
+      });
     }
 
     ensureChart();
@@ -219,6 +225,7 @@ window.SfEventsPanel = (() => {
       chart = null;
     }
     root = null;
+    panelRoot = null;
   }
 
   return { mount, unmount, start, stop };

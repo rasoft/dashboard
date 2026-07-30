@@ -42,7 +42,6 @@
           <button type="button" data-panel="remote">遥控器</button>
         </div>
       </div>
-      <button type="button" class="btn btn-ghost" id="btn-refresh-status">刷新状态</button>
       <button type="button" class="btn" id="btn-pause-toggle" data-paused="0" title="暂停 / 继续（空格）">暂停</button>
     </div>
   </header>
@@ -155,9 +154,6 @@
 
   <template id="tpl-ddr">
     <div class="ddr">
-      <div class="ddr-controls">
-        <button type="button" class="btn btn-ghost" id="ddr-clear">清空曲线</button>
-      </div>
       <div class="ddr-track-toggles" id="ddr-track-toggles" aria-label="曲线图开关">
         <button type="button" class="ddr-track-btn" data-track="total" aria-pressed="true">total</button>
         <button type="button" class="ddr-track-btn" data-track="cpu" aria-pressed="true">cpu_a55_main</button>
@@ -266,9 +262,6 @@
 
   <template id="tpl-sf-events">
     <div class="sf-events">
-      <div class="sf-events-controls">
-        <button type="button" class="btn btn-ghost" id="sf-events-clear">清空曲线</button>
-      </div>
       <div class="sf-events-meta" id="sf-events-meta">等待采样…</div>
       <div class="sf-events-chart-wrap">
         <canvas id="sf-events-chart" aria-label="SurfaceFlinger events 时序曲线"></canvas>

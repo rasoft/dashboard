@@ -91,6 +91,7 @@ window.DdrPanel = (() => {
   const TARGETS = SAMPLE_TRACKS.map((t) => t.target);
 
   let root = null;
+  let panelRoot = null;
   let charts = {};
   let timer = null;
   let running = false;
@@ -108,8 +109,9 @@ window.DdrPanel = (() => {
   });
 
   function els() {
+    const scope = panelRoot || root;
     const out = {
-      clear: root.querySelector("#ddr-clear"),
+      clear: scope?.querySelector("#ddr-clear"),
       status: root.querySelector("#ddr-status"),
       toggles: root.querySelector("#ddr-track-toggles"),
     };
@@ -442,6 +444,7 @@ window.DdrPanel = (() => {
   }
 
   function mount(panelEl) {
+    panelRoot = panelEl;
     root = panelEl.querySelector(".ddr");
     if (!root) return;
 
@@ -450,7 +453,10 @@ window.DdrPanel = (() => {
     if (root.dataset.bound !== "1") {
       root.dataset.bound = "1";
       const { clear: clearBtn } = els();
-      clearBtn?.addEventListener("click", () => clearSeries());
+      clearBtn?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        clearSeries();
+      });
       bindToggles();
     }
 
@@ -462,6 +468,7 @@ window.DdrPanel = (() => {
     stopPolling();
     destroyCharts();
     root = null;
+    panelRoot = null;
   }
 
   return { mount, unmount, start, stop };
