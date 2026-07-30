@@ -13,6 +13,7 @@
 - **IComposer - VPU 面板**：经 ADB `dumpsys android.hardware.graphics.composer3.IComposer/default` 读取 NationalChip HWC 表；用 VPU View 以爆炸轴测图叠画各层位置，并按 Z 从大到小列出明细
 - **SurfaceFlinger - events 面板**：经 ADB `dumpsys SurfaceFlinger --events` 按秒采样 `mWorkDuration` / `mReadyDuration` / `last vsync time` 并绘制曲线
 - **SurfaceFlinger - frametimeline 面板**：经 ADB `dumpsys SurfaceFlinger --frametimeline -all`；打开面板后自动按秒刷新；横轴帧序号、纵轴 0–⌈末帧 Expected Present⌉₀₀ ms，绘制 Expected/Actual 的 Start→Present 区间（Jank 红色），点选查看 Layer 明细
+- **proc - meminfo 面板**：经 ADB 读取 `/proc/meminfo`，按秒采样；层叠曲线展示 Swap 已用 / Cached+Buffers / AnonPages，并叠加 MemUsed 曲线（默认关闭）
 - 开始监测后按秒刷新实时网络带宽（WebRTC 收流统计）；未开播时显示预估
 - 打开操作台面板后自动开始播放，并启用键盘 ADB 按键发送
 - 顶栏「暂停 / 继续」可冻结各面板数据刷新与操作台 WebRTC 播放；继续时丢弃暂停期间积压的视频帧
@@ -23,6 +24,7 @@
 - 打开 IComposer - VPU 面板后自动按秒刷新
 - 打开 SurfaceFlinger - events 面板后自动按秒刷新
 - 打开 SurfaceFlinger - frametimeline 面板后自动开始采样
+- 打开 proc - meminfo 面板后按秒采样 `/proc/meminfo`
 
 串口（FTDI）设备发现接口已预留：`GET /api/serial/ports`，终端面板未在首期实现。
 
@@ -97,6 +99,7 @@ http://<工作站IP>:5000
 9. **IComposer - VPU**：打开面板后每秒读取 composer dumpsys 中的 NationalChip HWC 表；用 VPU View 爆炸轴测图展示屏幕位置，并按 Z 从大到小列出各层
 10. **SurfaceFlinger - events**：打开面板后每秒读取 SurfaceFlinger events，绘制 work / ready / last vsync 时序曲线
 11. **SurfaceFlinger - frametimeline**：打开面板后自动按秒刷新；横轴帧序号、纵轴 0–⌈末帧 Expected Present⌉₀₀ ms，并排绘制 Expected/Actual 的 Start→Present；点击某一帧查看 Layer 明细
+12. **proc - meminfo**：默认关闭；打开后按秒读取 `/proc/meminfo`，层叠绘制 Swap 已用 / Cached+Buffers / AnonPages，并叠加 MemUsed 曲线
 
 同一时间可多浏览器订阅同一路 HDMI 采集（一路采集、多路转发）。
 
@@ -114,6 +117,7 @@ http://<工作站IP>:5000
 - `GET /api/hwc/status` — 读取 NationalChip HWC 状态表（composer dumpsys）
 - `GET /api/sf/events` — 读取 SurfaceFlinger events 时序字段
 - `GET /api/sf/frametimeline` — 读取 SurfaceFlinger FrameTimeline（`--frametimeline -all`）
+- `GET /api/proc/meminfo` — 读取 `/proc/meminfo`（层叠：Swap 已用 / Cached+Buffers / AnonPages；另含 MemUsed）
 - `GET /api/serial/ports`
 
 WebRTC 信令（Socket.IO）：`hdmi:offer` / `hdmi:answer` / `hdmi:ice` / `hdmi:stop`
@@ -123,7 +127,7 @@ WebRTC 信令（Socket.IO）：`hdmi:offer` / `hdmi:answer` / `hdmi:ice` / `hdmi
 ```text
 app/
   routes/       # HTTP 页面与 REST API
-  services/     # adb、capture、bandwidth、webrtc、ddr_bw、hwc_layers、hwc_status、sf_events、sf_frametimeline
+  services/     # adb、capture、bandwidth、webrtc、ddr_bw、hwc_layers、hwc_status、sf_events、sf_frametimeline、meminfo
   signaling.py  # Socket.IO 信令
 static/         # CSS / JS
 templates/      # 单页 Dashboard

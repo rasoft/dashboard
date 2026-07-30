@@ -88,6 +88,17 @@ const PANEL_DEFS = {
     y: 30,
     defaultOpen: false,
   },
+  "proc-meminfo": {
+    id: "proc-meminfo",
+    title: "proc - meminfo",
+    w: 7,
+    h: 10,
+    minW: 4,
+    minH: 7,
+    x: 0,
+    y: 18,
+    defaultOpen: false,
+  },
 };
 
 const STORAGE_KEY = "android-board-dashboard-layout-v2";
@@ -380,6 +391,17 @@ const Dashboard = (() => {
       actions?.insertBefore(clearBtn, actions.firstChild);
     } else if (panelId === "sf-frametimeline") {
       body.appendChild(cloneTemplate("tpl-sf-frametimeline"));
+    } else if (panelId === "proc-meminfo") {
+      body.appendChild(cloneTemplate("tpl-meminfo"));
+      const actions = panel.querySelector(".panel-actions");
+      const clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.id = "meminfo-clear";
+      clearBtn.className = "panel-header-btn";
+      clearBtn.textContent = "清空曲线";
+      clearBtn.title = "清空曲线";
+      clearBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+      actions?.insertBefore(clearBtn, actions.firstChild);
     }
 
     panel.querySelector('[data-action="close"]').addEventListener("click", (e) => {
@@ -441,6 +463,9 @@ const Dashboard = (() => {
     if (panelId === "sf-frametimeline" && window.SfFrametimelinePanel) {
       window.SfFrametimelinePanel.mount(panelEl);
     }
+    if (panelId === "proc-meminfo" && window.MeminfoPanel) {
+      window.MeminfoPanel.mount(panelEl);
+    }
 
     const node = grid.engine.nodes.find((n) => n.id === panelId);
     if (node) clampNode(node);
@@ -472,6 +497,9 @@ const Dashboard = (() => {
     }
     if (panelId === "sf-frametimeline" && window.SfFrametimelinePanel?.unmount) {
       window.SfFrametimelinePanel.unmount();
+    }
+    if (panelId === "proc-meminfo" && window.MeminfoPanel?.unmount) {
+      window.MeminfoPanel.unmount();
     }
 
     // Remember last size/position before removing from the grid.

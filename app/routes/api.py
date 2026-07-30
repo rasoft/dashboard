@@ -1,6 +1,16 @@
 from flask import Blueprint, current_app, jsonify, request
 
-from app.services import adb, bandwidth, capture, ddr_bw, hwc_layers, hwc_status, sf_events, sf_frametimeline
+from app.services import (
+    adb,
+    bandwidth,
+    capture,
+    ddr_bw,
+    hwc_layers,
+    hwc_status,
+    meminfo,
+    sf_events,
+    sf_frametimeline,
+)
 from app.services.webrtc import webrtc_manager
 
 api_bp = Blueprint("api", __name__)
@@ -135,5 +145,12 @@ def sf_events_sample():
 @api_bp.get("/sf/frametimeline")
 def sf_frametimeline_sample():
     result = sf_frametimeline.sample()
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.get("/proc/meminfo")
+def proc_meminfo_sample():
+    result = meminfo.sample()
     status = 200 if result.get("ok") else 400
     return jsonify(result), status
