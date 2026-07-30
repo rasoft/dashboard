@@ -125,8 +125,14 @@ const Dashboard = (() => {
   const openPanels = new Set();
   let clamping = false;
   let paused = false;
+  let printing = false;
+  let restoring = false;
+  let suppressPersist = false;
   const pauseListeners = new Set();
   let statusTimer = null;
+  let savedGridHeight = null;
+  let savedStageStyles = null;
+  const PRINT_STAGE_H = 560;
 
   function isPaused() {
     return paused;
@@ -237,7 +243,7 @@ const Dashboard = (() => {
     if (!engine || engine._partialBoundFixInstalled) return;
     engine._partialBoundFixInstalled = true;
 
-    engine.nodeBoundFix = function (node, resizing) {
+    engine.nodeBoundFix = function (node) {
       if (node.maxW) node.w = Math.min(node.w, node.maxW);
       if (node.maxH) node.h = Math.min(node.h, node.maxH);
       if (node.minW && node.minW <= this.column) node.w = Math.max(node.w, node.minW);
@@ -246,16 +252,11 @@ const Dashboard = (() => {
       if (node.w < 1) node.w = 1;
       if (node.h < 1) node.h = 1;
 
-      // Keep at least one cell inside the visible workspace; allow overhang past right/bottom.
-      const cols = this.column || 12;
-      const rows = availableRows();
-      const keepW = Math.min(node.w, MIN_VISIBLE_COLS);
-      const keepH = Math.min(node.h, MIN_VISIBLE_ROWS);
+      // Only pin to the top-left; never pull panels upward/left based on the
+      // current viewport. Clamping to availableRows() here runs on addWidget
+      // during restore and permanently overwrites saved layouts via persist().
       if (node.x < 0) node.x = 0;
       if (node.y < 0) node.y = 0;
-      if (node.x > cols - keepW) node.x = Math.max(0, cols - keepW);
-      if (node.y > rows - keepH) node.y = Math.max(0, rows - keepH);
-      // Intentionally do NOT force x+w <= cols or y+h <= rows (partial overhang).
       return this;
     };
   }
@@ -287,13 +288,13 @@ const Dashboard = (() => {
     if (grid.engine) grid.engine.maxRow = 0;
     installPartialBoundFix();
     installOverlapFix();
-    clampAllPanels();
+    // Do not clampAllPanels() here — window resize / init must not rewrite
+    // saved positions into localStorage.
   }
 
   function sanitizeGeometry(panelId, geo) {
     const def = PANEL_DEFS[panelId];
     const cols = 12;
-    const rows = availableRows();
     let x = Number(geo.x);
     let y = Number(geo.y);
     let w = Number(geo.w);
@@ -308,8 +309,11 @@ const Dashboard = (() => {
     }
     w = Math.min(Math.max(1, w), cols);
     h = Math.max(1, h);
+    // Do not clamp Y to the current viewport height here — that would crush
+    // saved layouts on load when availableRows() is still small, then persist
+    // the damaged positions. Drag/resize clamping handles on-screen visibility.
     x = Math.max(0, Math.min(x, cols - 1));
-    y = Math.max(0, Math.min(y, Math.max(0, rows - 1)));
+    y = Math.max(0, y);
     return { x, y, w, h };
   }
 
@@ -486,6 +490,17 @@ const Dashboard = (() => {
       noResize: !!def.lockedSize,
     });
 
+    // Re-assert geometry after prepareNode/nodeBoundFix so restored sizes stick.
+    if (widget && (geo.w !== widget.gridstackNode?.w || geo.h !== widget.gridstackNode?.h
+        || geo.x !== widget.gridstackNode?.x || geo.y !== widget.gridstackNode?.y)) {
+      clamping = true;
+      try {
+        grid.update(widget, { x: geo.x, y: geo.y, w: geo.w, h: geo.h });
+      } finally {
+        clamping = false;
+      }
+    }
+
     const contentHost = widget.querySelector(".grid-stack-item-content");
     contentHost.classList.add(`panel-host-${panelId}`);
     contentHost.innerHTML = "";
@@ -515,8 +530,8 @@ const Dashboard = (() => {
     }
 
     const node = grid.engine.nodes.find((n) => n.id === panelId);
-    if (node) clampNode(node);
-    persist();
+    if (node && !restoring) clampNode(node);
+    if (!restoring) persist();
   }
 
   function closePanel(panelId) {
@@ -572,15 +587,19 @@ const Dashboard = (() => {
   }
 
   function persist() {
+    if (printing || restoring || suppressPersist || clamping) return;
     const store = loadStore();
-    grid.save(false).forEach((item) => {
-      if (!item?.id) return;
-      const def = PANEL_DEFS[item.id];
-      store.layouts[item.id] = {
-        x: item.x,
-        y: item.y,
-        w: def?.lockedSize ? def.w : item.w,
-        h: def?.lockedSize ? def.h : item.h,
+    // Read from engine.nodes directly. grid.save() strips `w`/`h` when they
+    // equal minW/minH (GridStack removeInternalForSave), which made refresh
+    // fall back to PANEL_DEFS default sizes.
+    (grid.engine?.nodes || []).forEach((node) => {
+      if (!node?.id) return;
+      const def = PANEL_DEFS[node.id];
+      store.layouts[node.id] = {
+        x: Number(node.x) || 0,
+        y: Number(node.y) || 0,
+        w: def?.lockedSize ? def.w : Math.max(1, Number(node.w) || def?.w || 1),
+        h: def?.lockedSize ? def.h : Math.max(1, Number(node.h) || def?.h || 1),
       };
     });
     store.open = [...openPanels];
@@ -588,11 +607,17 @@ const Dashboard = (() => {
   }
 
   function restore() {
-    const store = loadStore();
-    let toOpen = (store.open || []).filter((id) => PANEL_DEFS[id]);
-    // If layout was corrupted to an empty open list, fall back to default panels.
-    if (!toOpen.length) toOpen = defaultOpenIds();
-    toOpen.forEach((id) => addPanel(id));
+    restoring = true;
+    try {
+      const store = loadStore();
+      let toOpen = (store.open || []).filter((id) => PANEL_DEFS[id]);
+      // If layout was corrupted to an empty open list, fall back to default panels.
+      if (!toOpen.length) toOpen = defaultOpenIds();
+      toOpen.forEach((id) => addPanel(id));
+    } finally {
+      restoring = false;
+    }
+    persist();
   }
 
   async function refreshStatus() {
@@ -674,6 +699,88 @@ const Dashboard = (() => {
     el.style.zIndex = String(maxZ + 1);
   }
 
+  function redrawPrintCanvases() {
+    // Do NOT dispatch window "resize": GridStack listens to it and may rewrite
+    // panel geometry, which would then get persisted over the user's layout.
+    window.dispatchEvent(new CustomEvent("dashboard:redraw"));
+  }
+
+  function forcePrintStageSize() {
+    const stages = document.querySelectorAll(".hwc-stage, .hwc-st-stage");
+    savedStageStyles = [];
+    stages.forEach((el) => {
+      savedStageStyles.push({
+        el,
+        height: el.style.height,
+        minHeight: el.style.minHeight,
+        maxHeight: el.style.maxHeight,
+      });
+      el.style.height = `${PRINT_STAGE_H}px`;
+      el.style.minHeight = `${PRINT_STAGE_H}px`;
+      el.style.maxHeight = "none";
+    });
+  }
+
+  function restorePrintStageSize() {
+    if (!savedStageStyles) return;
+    savedStageStyles.forEach(({ el, height, minHeight, maxHeight }) => {
+      el.style.height = height || "";
+      el.style.minHeight = minHeight || "";
+      el.style.maxHeight = maxHeight || "";
+    });
+    savedStageStyles = null;
+  }
+
+  function preparePrintLayout() {
+    if (printing) {
+      // Already expanded (e.g. matchMedia + beforeprint both fired); still redraw.
+      redrawPrintCanvases();
+      return;
+    }
+    printing = true;
+    document.body.classList.add("is-printing");
+    const host = document.getElementById("dashboard-grid");
+    if (host) {
+      savedGridHeight = {
+        height: host.style.height,
+        maxHeight: host.style.maxHeight,
+        minHeight: host.style.minHeight,
+      };
+      host.style.height = "auto";
+      host.style.maxHeight = "none";
+      host.style.minHeight = "0";
+    }
+    // Inline stage size so canvas clientHeight is correct even before print CSS settles.
+    forcePrintStageSize();
+    // Force layout so stages have final print width before canvas measure/redraw.
+    void document.body.offsetHeight;
+    // beforeprint must redraw synchronously; rAF often misses the print snapshot.
+    redrawPrintCanvases();
+    requestAnimationFrame(() => redrawPrintCanvases());
+  }
+
+  function restoreAfterPrint() {
+    if (!printing) return;
+    printing = false;
+    document.body.classList.remove("is-printing");
+    restorePrintStageSize();
+    const host = document.getElementById("dashboard-grid");
+    if (host && savedGridHeight) {
+      host.style.height = savedGridHeight.height || "";
+      host.style.maxHeight = savedGridHeight.maxHeight || "";
+      host.style.minHeight = savedGridHeight.minHeight || "";
+      savedGridHeight = null;
+    }
+    // Restore screen layout without writing print-time geometry to localStorage.
+    suppressPersist = true;
+    try {
+      applyWorkspaceBounds();
+    } finally {
+      suppressPersist = false;
+    }
+    requestAnimationFrame(() => redrawPrintCanvases());
+  }
+
   function init() {
     grid = GridStack.init({
       cellHeight: CELL_HEIGHT,
@@ -690,7 +797,7 @@ const Dashboard = (() => {
     installPartialBoundFix();
 
     grid.on("change", () => {
-      if (clamping) return;
+      if (clamping || printing || restoring || suppressPersist) return;
       persist();
     });
     grid.on("dragstop", (_event, el) => {
@@ -714,11 +821,35 @@ const Dashboard = (() => {
     }
     window.addEventListener("keydown", onGlobalKeyDown, true);
     window.addEventListener("resize", () => {
+      if (printing) return;
       // Defer until layout settles so workspace height is non-zero.
       requestAnimationFrame(() => applyWorkspaceBounds());
     });
+    window.addEventListener("beforeprint", preparePrintLayout);
+    window.addEventListener("afterprint", restoreAfterPrint);
+    // Chrome sometimes applies print media before beforeprint; keep layout in sync.
+    if (typeof window.matchMedia === "function") {
+      const mql = window.matchMedia("print");
+      const onPrintMql = (e) => {
+        if (e.matches) preparePrintLayout();
+        else restoreAfterPrint();
+      };
+      if (typeof mql.addEventListener === "function") {
+        mql.addEventListener("change", onPrintMql);
+      } else if (typeof mql.addListener === "function") {
+        mql.addListener(onPrintMql);
+      }
+    }
     restore();
-    requestAnimationFrame(() => applyWorkspaceBounds());
+    // Install bound/overlap fixes without clamping — early availableRows() can be
+    // too small and would crush saved Y positions, then persist them permanently.
+    requestAnimationFrame(() => {
+      if (!grid) return;
+      grid.opts.maxRow = 0;
+      if (grid.engine) grid.engine.maxRow = 0;
+      installPartialBoundFix();
+      installOverlapFix();
+    });
     refreshStatus();
     statusTimer = setInterval(() => {
       if (!paused) refreshStatus();

@@ -110,10 +110,12 @@ window.HwcStatusPanel = (() => {
     const { stage, canvas } = els();
     if (!stage || !canvas) return { w: 0, h: 0 };
     const dpr = window.devicePixelRatio || 1;
-    const w = Math.max(1, stage.clientWidth);
-    const h = Math.max(1, stage.clientHeight);
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
+    const rect = stage.getBoundingClientRect();
+    // Ceil to avoid sub-pixel gaps that show the stage background as a black strip.
+    const w = Math.max(1, Math.ceil(rect.width || stage.clientWidth || 0));
+    const h = Math.max(1, Math.ceil(rect.height || stage.clientHeight || 0));
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
     canvas.width = Math.floor(w * dpr);
     canvas.height = Math.floor(h * dpr);
     const ctx = canvas.getContext("2d");
@@ -251,7 +253,7 @@ window.HwcStatusPanel = (() => {
   }
 
   /** Place a label outside the polygon, offset from a corner away from the centroid. */
-  function drawOutsideLabel(ctx, pts, cornerIndex, text) {
+  function drawOutsideLabel(ctx, pts, cornerIndex, text, bounds) {
     if (!pts?.length) return;
     const corner = pts[cornerIndex];
     if (!corner) return;
@@ -267,8 +269,8 @@ window.HwcStatusPanel = (() => {
     let dy = corner.sy - cy;
     const len = Math.hypot(dx, dy) || 1;
     const dist = 16;
-    const x = corner.sx + (dx / len) * dist;
-    const y = corner.sy + (dy / len) * dist;
+    let x = corner.sx + (dx / len) * dist;
+    let y = corner.sy + (dy / len) * dist;
 
     const fontSize = 11;
     ctx.font = `600 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
@@ -279,10 +281,18 @@ window.HwcStatusPanel = (() => {
     const alignTop = dy >= 0;
     ctx.textAlign = alignLeft ? "left" : "right";
     ctx.textBaseline = alignTop ? "top" : "bottom";
-    const boxX = alignLeft ? x - padX : x - tw - padX;
-    const boxY = alignTop ? y : y - lh;
+    let boxX = alignLeft ? x - padX : x - tw - padX;
+    let boxY = alignTop ? y : y - lh;
+    const boxW = tw + padX * 2;
+    // Keep label boxes inside the canvas so overflow:hidden on the stage cannot clip them.
+    if (bounds) {
+      boxX = Math.max(bounds.left, Math.min(boxX, bounds.right - boxW));
+      boxY = Math.max(bounds.top, Math.min(boxY, bounds.bottom - lh));
+      x = alignLeft ? boxX + padX : boxX + tw + padX;
+      y = alignTop ? boxY : boxY + lh;
+    }
     ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
-    ctx.fillRect(boxX, boxY, tw + padX * 2, lh);
+    ctx.fillRect(boxX, boxY, boxW, lh);
     ctx.fillStyle = "#f2f6fa";
     ctx.fillText(text, x, y);
   }
@@ -340,14 +350,15 @@ window.HwcStatusPanel = (() => {
 
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, cssW, cssH);
-    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+    ctx.fillStyle = "#2a3038";
     ctx.fillRect(0, 0, cssW, cssH);
 
     const layers = payload?.layers || [];
     const size = displaySize(payload);
-    const pad = 48; // room for outside corner labels
-    const availW = Math.max(40, cssW - pad * 2);
-    const availH = Math.max(40, cssH - pad * 2);
+    const padX = 108; // outside labels like (3840,2160) need ~90px+
+    const padY = 56;
+    const availW = Math.max(40, cssW - padX * 2);
+    const availH = Math.max(40, cssH - padY * 2);
     const rawItems = drawItemsFromLayers(layers);
     const n = Math.max(1, rawItems.length);
 
@@ -372,18 +383,29 @@ window.HwcStatusPanel = (() => {
     });
     const baseSpanX = Math.max(1, baseMaxX - baseMinX);
     const baseSpanY = Math.max(1, baseMaxY - baseMinY);
-    const minGap = Math.max(48, Math.min(size.width, size.height) * 0.05);
-    const maxGap = Math.max(minGap, Math.min(size.width, size.height) * 0.32);
-    let gap = Math.max(120, Math.min(size.width, size.height) * 0.18);
+    // Prefer larger explode spacing so adjacent corner labels don't collide.
+    // If the stack grows taller than the panel, overall scale shrinks to fit.
+    const dim = Math.min(size.width, size.height);
+    const minGap = Math.max(220, dim * 0.18);
+    const maxGap = Math.max(minGap, dim * 0.7);
+    let gap = 0;
     if (n > 1) {
-      // Want availH / (baseSpanY + (n-1)*gap) ≈ availW / baseSpanX
+      gap = minGap;
       const targetTotalY = (availH * baseSpanX) / availW;
       const rawGap = (targetTotalY - baseSpanY) / (n - 1);
-      if (Number.isFinite(rawGap)) {
-        gap = Math.min(maxGap, Math.max(minGap, rawGap));
+      if (Number.isFinite(rawGap) && rawGap > gap) {
+        gap = Math.min(maxGap, rawGap);
       }
-    } else {
-      gap = 0;
+      // Ensure ~1 label-line of clearance in screen space after fit-scale.
+      const spanYApprox = baseSpanY + (n - 1) * gap;
+      const scaleApprox = Math.min(availW / baseSpanX, availH / Math.max(1, spanYApprox));
+      const minScreenGap = 44;
+      if (scaleApprox > 0 && gap * scaleApprox < minScreenGap) {
+        const gapFromWidth = (minScreenGap * baseSpanX) / availW;
+        const denom = availH - minScreenGap * (n - 1);
+        const gapFromHeight = denom > 1 ? (minScreenGap * baseSpanY) / denom : minGap;
+        gap = Math.max(gap, gapFromWidth, gapFromHeight, minGap);
+      }
     }
 
     const items = rawItems.map((item, i) => ({
@@ -421,6 +443,7 @@ window.HwcStatusPanel = (() => {
     if (!(scale > 0)) return;
     const ox = (cssW - spanX * scale) / 2 - minX * scale;
     const oy = (cssH - spanY * scale) / 2 - minY * scale;
+    const labelBounds = { left: 4, top: 4, right: cssW - 4, bottom: cssH - 4 };
 
     const toScreen = (x, y, elev) => {
       const p = project(x, y, elev, size);
@@ -473,8 +496,8 @@ window.HwcStatusPanel = (() => {
       const idText =
         mergedCount > 1 ? `#${layer.id}×${mergedCount}` : `#${layer.id}`;
       // Corners: 0=TL, 2=BR outside; 3=BL id inside the layer.
-      drawOutsideLabel(ctx, pts, 0, `[${left},${top}]`);
-      drawOutsideLabel(ctx, pts, 2, `(${right},${bottom})`);
+      drawOutsideLabel(ctx, pts, 0, `[${left},${top}]`, labelBounds);
+      drawOutsideLabel(ctx, pts, 2, `(${right},${bottom})`, labelBounds);
       drawInsideLabel(ctx, pts, 3, idText);
     });
 
@@ -601,6 +624,12 @@ window.HwcStatusPanel = (() => {
     root = panelEl.querySelector(".hwc-st");
     if (!root) return;
 
+    if (root.dataset.bound !== "1") {
+      root.dataset.bound = "1";
+      window.addEventListener("beforeprint", onResize);
+      window.addEventListener("dashboard:redraw", onResize);
+    }
+
     const { stage } = els();
     if (stage && typeof ResizeObserver !== "undefined") {
       if (resizeObserver) resizeObserver.disconnect();
@@ -618,6 +647,8 @@ window.HwcStatusPanel = (() => {
 
   function unmount() {
     stop();
+    window.removeEventListener("beforeprint", onResize);
+    window.removeEventListener("dashboard:redraw", onResize);
     if (resizeObserver) {
       resizeObserver.disconnect();
       resizeObserver = null;

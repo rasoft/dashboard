@@ -713,11 +713,13 @@ body {
   min-height: 180px;
   border-radius: 8px;
   border: 1px solid var(--line);
-  background: rgba(0, 0, 0, 0.28);
+  background: #2a3038;
   overflow: hidden;
 }
 
 .hwc-stage canvas {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
@@ -725,6 +727,7 @@ body {
 
 .hwc-legend-wrap {
   flex: 0 0 auto;
+  max-height: 34%;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -740,7 +743,16 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-  overflow: visible;
+  overflow: auto;
+  /* Keep scroll for long legends, but hide the non-draggable scrollbar chrome. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.hwc-legend::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .hwc-legend-empty {
@@ -820,11 +832,13 @@ body {
   min-height: 180px;
   border-radius: 8px;
   border: 1px solid var(--line);
-  background: rgba(0, 0, 0, 0.22);
+  background: #2a3038;
   overflow: hidden;
 }
 
 .hwc-st-stage canvas {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
@@ -1088,3 +1102,273 @@ body {
     padding: 0.6rem;
   }
 }
+
+/* Expand layout while printing (JS adds .is-printing before print snapshot). */
+body.is-printing {
+  background: #fff !important;
+  color: #111 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+  display: block !important;
+}
+
+body.is-printing .topbar-actions,
+body.is-printing .add-panel-wrap,
+body.is-printing .menu,
+body.is-printing .icon-btn,
+body.is-printing #btn-pause-toggle,
+body.is-printing .ui-resizable-handle,
+body.is-printing .panel-header-btn {
+  display: none !important;
+}
+
+body.is-printing .workspace,
+body.is-printing .grid-stack,
+body.is-printing .grid-stack-item-content,
+body.is-printing .panel,
+body.is-printing .panel-body,
+body.is-printing .hwc,
+body.is-printing .hwc-st,
+body.is-printing .sf-ftl,
+body.is-printing .hwc-legend-wrap,
+body.is-printing .hwc-legend,
+body.is-printing .ddr,
+body.is-printing .diskstats,
+body.is-printing .ddr-charts,
+body.is-printing .meminfo {
+  overflow: visible !important;
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
+}
+
+body.is-printing .workspace {
+  padding: 0 !important;
+  flex: none !important;
+}
+
+body.is-printing .grid-stack {
+  position: static !important;
+}
+
+body.is-printing .grid-stack > .grid-stack-item {
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: 100% !important;
+  height: auto !important;
+  margin: 0 0 12px !important;
+  transform: none !important;
+}
+
+body.is-printing .grid-stack-item-content {
+  position: relative !important;
+  inset: auto !important;
+  left: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: auto !important;
+  height: auto !important;
+  box-shadow: none !important;
+}
+
+body.is-printing .panel,
+body.is-printing .panel-body,
+body.is-printing .hwc,
+body.is-printing .hwc-st,
+body.is-printing .sf-ftl,
+body.is-printing .ddr,
+body.is-printing .diskstats,
+body.is-printing .ddr-charts,
+body.is-printing .meminfo {
+  flex: none !important;
+}
+
+body.is-printing .ddr-track-toggles {
+  display: none !important;
+}
+
+body.is-printing .hwc-stage,
+body.is-printing .hwc-st-stage {
+  position: relative !important;
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  height: 560px !important;
+  min-height: 560px !important;
+  max-height: none !important;
+  /* Clip sub-pixel gaps; avoid #111 peeking as a black strip on right/bottom. */
+  overflow: hidden !important;
+  background: #2a3038 !important;
+  border-color: #9aa3ad !important;
+}
+
+body.is-printing .hwc-stage canvas,
+body.is-printing .hwc-st-stage canvas {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+}
+
+/* Browser print: flatten GridStack absolute layout so explosion diagrams aren't clipped. */
+@media print {
+  @page {
+    size: auto;
+    margin: 8mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  .topbar {
+    position: static !important;
+    backdrop-filter: none !important;
+    background: #fff !important;
+    border-bottom: 1px solid #ccc !important;
+    color: #111 !important;
+    z-index: auto !important;
+  }
+
+  .topbar-actions,
+  .add-panel-wrap,
+  .menu,
+  .icon-btn,
+  #btn-pause-toggle,
+  .ui-resizable-handle,
+  .panel-header-btn {
+    display: none !important;
+  }
+
+  .status-pill {
+    background: #f5f5f5 !important;
+    border-color: #ccc !important;
+    color: #333 !important;
+  }
+
+  .workspace {
+    padding: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    flex: none !important;
+    min-height: 0 !important;
+  }
+
+  .grid-stack {
+    position: static !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .grid-stack > .grid-stack-item {
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 0 12px !important;
+    transform: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .grid-stack-item-content {
+    position: relative !important;
+    inset: auto !important;
+    left: auto !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    border-color: #bbb !important;
+  }
+
+  .panel,
+  .panel-body,
+  .hwc,
+  .hwc-st,
+  .sf-ftl,
+  .ddr,
+  .diskstats,
+  .ddr-charts,
+  .meminfo {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    flex: none !important;
+  }
+
+  .ddr-track-toggles {
+    display: none !important;
+  }
+
+  .panel-header {
+    background: #f3f3f3 !important;
+    color: #111 !important;
+  }
+
+  .hwc-stage,
+  .hwc-st-stage {
+    position: relative !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    height: 560px !important;
+    min-height: 560px !important;
+    max-height: none !important;
+    overflow: hidden !important;
+    background: #2a3038 !important;
+    border-color: #9aa3ad !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .hwc-stage canvas,
+  .hwc-st-stage canvas {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    display: block !important;
+  }
+
+  .hwc-legend-wrap {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .hwc-legend {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  .hwc-meta,
+  .hwc-st-meta {
+    background: #eef5fb !important;
+    color: #123 !important;
+    border-color: #9cb !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
