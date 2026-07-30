@@ -5,6 +5,7 @@ from app.services import (
     bandwidth,
     capture,
     ddr_bw,
+    diskstats,
     hwc_layers,
     hwc_status,
     meminfo,
@@ -152,5 +153,29 @@ def sf_frametimeline_sample():
 @api_bp.get("/proc/meminfo")
 def proc_meminfo_sample():
     result = meminfo.sample()
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.get("/proc/diskstats")
+def proc_diskstats_sample():
+    raw = request.args.get("devices") or ""
+    if raw.strip():
+        devices = [d.strip() for d in raw.split(",") if d.strip()]
+    else:
+        devices = list(diskstats.FIXED_DEVICES)
+    result = diskstats.sample(devices=devices)
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.get("/proc/diskstats/map")
+def proc_diskstats_map():
+    raw_mounts = request.args.get("mounts") or ""
+    if raw_mounts.strip():
+        mounts = [m.strip() for m in raw_mounts.split(",") if m.strip()]
+    else:
+        mounts = list(diskstats.TARGET_MOUNTS)
+    result = diskstats.resolve_tracks(mounts=mounts)
     status = 200 if result.get("ok") else 400
     return jsonify(result), status

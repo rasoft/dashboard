@@ -99,6 +99,17 @@ const PANEL_DEFS = {
     y: 18,
     defaultOpen: false,
   },
+  "proc-diskstats": {
+    id: "proc-diskstats",
+    title: "proc - diskstats",
+    w: 9,
+    h: 12,
+    minW: 5,
+    minH: 8,
+    x: 0,
+    y: 18,
+    defaultOpen: false,
+  },
 };
 
 const STORAGE_KEY = "android-board-dashboard-layout-v2";
@@ -402,6 +413,17 @@ const Dashboard = (() => {
       clearBtn.title = "清空曲线";
       clearBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
       actions?.insertBefore(clearBtn, actions.firstChild);
+    } else if (panelId === "proc-diskstats") {
+      body.appendChild(cloneTemplate("tpl-diskstats"));
+      const actions = panel.querySelector(".panel-actions");
+      const clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.id = "diskstats-clear";
+      clearBtn.className = "panel-header-btn";
+      clearBtn.textContent = "清空曲线";
+      clearBtn.title = "清空曲线";
+      clearBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+      actions?.insertBefore(clearBtn, actions.firstChild);
     }
 
     panel.querySelector('[data-action="close"]').addEventListener("click", (e) => {
@@ -466,6 +488,9 @@ const Dashboard = (() => {
     if (panelId === "proc-meminfo" && window.MeminfoPanel) {
       window.MeminfoPanel.mount(panelEl);
     }
+    if (panelId === "proc-diskstats" && window.DiskstatsPanel) {
+      window.DiskstatsPanel.mount(panelEl);
+    }
 
     const node = grid.engine.nodes.find((n) => n.id === panelId);
     if (node) clampNode(node);
@@ -500,6 +525,9 @@ const Dashboard = (() => {
     }
     if (panelId === "proc-meminfo" && window.MeminfoPanel?.unmount) {
       window.MeminfoPanel.unmount();
+    }
+    if (panelId === "proc-diskstats" && window.DiskstatsPanel?.unmount) {
+      window.DiskstatsPanel.unmount();
     }
 
     // Remember last size/position before removing from the grid.

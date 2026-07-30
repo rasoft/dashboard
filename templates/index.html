@@ -38,6 +38,7 @@
           <button type="button" data-panel="hwc">SurfaceFlinger - hwclayers</button>
           <button type="button" data-panel="ddr">内存带宽</button>
           <button type="button" data-panel="proc-meminfo">proc - meminfo</button>
+          <button type="button" data-panel="proc-diskstats">proc - diskstats</button>
           <button type="button" data-panel="hdmi">操作台</button>
           <button type="button" data-panel="adb-text">输入</button>
           <button type="button" data-panel="remote">遥控器</button>
@@ -299,6 +300,14 @@
     </div>
   </template>
 
+  <template id="tpl-diskstats">
+    <div class="diskstats">
+      <div class="ddr-track-toggles" id="diskstats-track-toggles" aria-label="磁盘曲线图开关"></div>
+      <div class="ddr-charts" id="diskstats-charts"></div>
+      <p class="ddr-status" id="diskstats-status">等待操作</p>
+    </div>
+  </template>
+
   <script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
@@ -311,6 +320,7 @@
   <script src="{{ url_for('static', filename='js/sf-events.js') }}"></script>
   <script src="{{ url_for('static', filename='js/sf-frametimeline.js') }}"></script>
   <script src="{{ url_for('static', filename='js/meminfo.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/diskstats.js') }}"></script>
   <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>

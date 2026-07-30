@@ -544,8 +544,9 @@ body {
   color: var(--danger);
 }
 
-/* DDR memory bandwidth */
-.ddr {
+/* DDR memory bandwidth / diskstats multi-track charts */
+.ddr,
+.diskstats {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
