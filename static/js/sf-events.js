@@ -158,7 +158,7 @@ window.SfEventsPanel = (() => {
   async function fetchSample() {
     const res = await fetch("/api/sf/events");
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error || "获取 Sf-事件失败");
+    if (!data.ok) throw new Error(data.error || "获取 SurfaceFlinger events 失败");
     return data;
   }
 

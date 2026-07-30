@@ -35,7 +35,7 @@ const PANEL_DEFS = {
   },
   hwc: {
     id: "hwc",
-    title: "Sf-HWC层",
+    title: "SurfaceFlinger - hwclayers",
     w: 6,
     h: 12,
     minW: 4,
@@ -46,7 +46,7 @@ const PANEL_DEFS = {
   },
   "hwc-status": {
     id: "hwc-status",
-    title: "VPU-HWC状态",
+    title: "IComposer - VPU",
     w: 7,
     h: 12,
     minW: 5,
@@ -57,7 +57,7 @@ const PANEL_DEFS = {
   },
   "sf-events": {
     id: "sf-events",
-    title: "Sf-事件",
+    title: "SurfaceFlinger - events",
     w: 6,
     h: 10,
     minW: 4,
@@ -68,7 +68,7 @@ const PANEL_DEFS = {
   },
   "sf-frametimeline": {
     id: "sf-frametimeline",
-    title: "Sf-帧时间线",
+    title: "SurfaceFlinger - frametimeline",
     w: 8,
     h: 12,
     minW: 5,
@@ -471,7 +471,21 @@ const Dashboard = (() => {
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closeMenu();
     });
-    menu.querySelectorAll("button[data-panel]").forEach((b) => {
+    const buttons = [...menu.querySelectorAll("button[data-panel]")];
+    buttons.forEach((b) => {
+      const def = PANEL_DEFS[b.dataset.panel];
+      if (def?.title) b.textContent = def.title;
+    });
+    buttons
+      .sort((a, b) =>
+        a.textContent.trim().localeCompare(b.textContent.trim(), "zh-CN", {
+          sensitivity: "base",
+          numeric: true,
+        })
+      )
+      .forEach((b) => menu.appendChild(b));
+
+    buttons.forEach((b) => {
       b.addEventListener("click", (e) => {
         e.stopPropagation();
         addPanel(b.dataset.panel);
