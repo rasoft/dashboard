@@ -191,9 +191,43 @@ window.HwcPanel = (() => {
       width: Math.max(1, payload?.width || 1920),
       height: Math.max(1, payload?.height || 1080),
     };
-    const pad = 16;
+    const pad = 48;
+    const availW = Math.max(40, cssW - pad * 2);
+    const availH = Math.max(40, cssH - pad * 2);
     const n = Math.max(1, layers.length);
-    const gap = Math.max(120, Math.min(size.width, size.height) * 0.18);
+
+    const baseCorners = [
+      { x: 0, y: 0 },
+      { x: size.width, y: 0 },
+      { x: size.width, y: size.height },
+      { x: 0, y: size.height },
+    ];
+
+    const basePts = baseCorners.map((c) => project(c.x, c.y, 0, size));
+    let baseMinX = Infinity;
+    let baseMinY = Infinity;
+    let baseMaxX = -Infinity;
+    let baseMaxY = -Infinity;
+    basePts.forEach((p) => {
+      baseMinX = Math.min(baseMinX, p.sx);
+      baseMinY = Math.min(baseMinY, p.sy);
+      baseMaxX = Math.max(baseMaxX, p.sx);
+      baseMaxY = Math.max(baseMaxY, p.sy);
+    });
+    const baseSpanX = Math.max(1, baseMaxX - baseMinX);
+    const baseSpanY = Math.max(1, baseMaxY - baseMinY);
+    const minGap = Math.max(48, Math.min(size.width, size.height) * 0.05);
+    const maxGap = Math.max(minGap, Math.min(size.width, size.height) * 0.32);
+    let gap = Math.max(120, Math.min(size.width, size.height) * 0.18);
+    if (n > 1) {
+      const targetTotalY = (availH * baseSpanX) / availW;
+      const rawGap = (targetTotalY - baseSpanY) / (n - 1);
+      if (Number.isFinite(rawGap)) {
+        gap = Math.min(maxGap, Math.max(minGap, rawGap));
+      }
+    } else {
+      gap = 0;
+    }
 
     // Table order only: earlier rows at bottom, later rows explode upward.
     const items = layers.map((layer, tableIndex) => ({
@@ -203,13 +237,6 @@ window.HwcPanel = (() => {
       elev: tableIndex * gap,
       view: frameView(layer),
     }));
-
-    const baseCorners = [
-      { x: 0, y: 0 },
-      { x: size.width, y: 0 },
-      { x: size.width, y: size.height },
-      { x: 0, y: size.height },
-    ];
 
     const allPts = [];
     const maxElev = (n - 1) * gap;
@@ -239,7 +266,7 @@ window.HwcPanel = (() => {
 
     const spanX = Math.max(1, maxX - minX);
     const spanY = Math.max(1, maxY - minY);
-    const scale = Math.min((cssW - pad * 2) / spanX, (cssH - pad * 2) / spanY);
+    const scale = Math.min(availW / spanX, availH / spanY);
     if (!(scale > 0)) {
       renderLegend(layers);
       return;

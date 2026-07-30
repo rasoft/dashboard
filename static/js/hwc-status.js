@@ -34,7 +34,7 @@ window.HwcStatusPanel = (() => {
       meta: root.querySelector("#hwc-st-meta"),
       stage: root.querySelector("#hwc-st-stage"),
       canvas: root.querySelector("#hwc-st-canvas"),
-      list: root.querySelector("#hwc-st-list"),
+      legend: root.querySelector("#hwc-st-legend"),
       status: root.querySelector("#hwc-st-status"),
     };
   }
@@ -49,31 +49,6 @@ window.HwcStatusPanel = (() => {
   function setMeta(text) {
     const { meta } = els();
     if (meta) meta.textContent = text;
-  }
-
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
-  function fmtRect(r) {
-    if (!r) return "—";
-    return `${r.left} ${r.top} ${r.right} ${r.bottom}`;
-  }
-
-  function fmtBox(b) {
-    if (!b) return "—";
-    return `${b.x} ${b.y} ${b.width} ${b.height}`;
-  }
-
-  function fmtAlpha(a) {
-    if (!a) return "—";
-    if (a.raw) return a.raw;
-    if (a.float != null && a.byte != null) return `${a.float}/${a.byte}`;
-    return "—";
   }
 
   function normalizeVpuType(vpu) {
@@ -242,10 +217,6 @@ window.HwcStatusPanel = (() => {
           view,
           isClient: true,
           mergedCount: count,
-          label:
-            count > 1
-              ? `Z${top.z} Client×${count}`
-              : `Z${top.z} #${top.id}`,
         });
         return;
       }
@@ -255,7 +226,6 @@ window.HwcStatusPanel = (() => {
         view: viewOf(layer),
         isClient: false,
         mergedCount: 1,
-        label: `Z${layer.z} #${layer.id}`,
       });
     });
     return items;
@@ -330,7 +300,6 @@ window.HwcStatusPanel = (() => {
     });
     cx /= pts.length;
     cy /= pts.length;
-    // Toward centroid = inside.
     let dx = cx - corner.sx;
     let dy = cy - corner.sy;
     const len = Math.hypot(dx, dy) || 1;
@@ -376,17 +345,11 @@ window.HwcStatusPanel = (() => {
 
     const layers = payload?.layers || [];
     const size = displaySize(payload);
-    const pad = 16;
+    const pad = 48; // room for outside corner labels
+    const availW = Math.max(40, cssW - pad * 2);
+    const availH = Math.max(40, cssH - pad * 2);
     const rawItems = drawItemsFromLayers(layers);
     const n = Math.max(1, rawItems.length);
-    // Keep explode gap modest so the stack stays readable in a small panel.
-    const gap = Math.max(120, Math.min(size.width, size.height) * 0.18);
-
-    const items = rawItems.map((item, i) => ({
-      ...item,
-      // Highest Z (earlier in Z-desc list) gets largest elevation.
-      elev: (n - 1 - i) * gap,
-    }));
 
     const baseCorners = [
       { x: 0, y: 0 },
@@ -394,6 +357,40 @@ window.HwcStatusPanel = (() => {
       { x: size.width, y: size.height },
       { x: 0, y: size.height },
     ];
+
+    // Pick explode gap so the stack aspect matches the panel when possible.
+    const basePts = baseCorners.map((c) => project(c.x, c.y, 0, size));
+    let baseMinX = Infinity;
+    let baseMinY = Infinity;
+    let baseMaxX = -Infinity;
+    let baseMaxY = -Infinity;
+    basePts.forEach((p) => {
+      baseMinX = Math.min(baseMinX, p.sx);
+      baseMinY = Math.min(baseMinY, p.sy);
+      baseMaxX = Math.max(baseMaxX, p.sx);
+      baseMaxY = Math.max(baseMaxY, p.sy);
+    });
+    const baseSpanX = Math.max(1, baseMaxX - baseMinX);
+    const baseSpanY = Math.max(1, baseMaxY - baseMinY);
+    const minGap = Math.max(48, Math.min(size.width, size.height) * 0.05);
+    const maxGap = Math.max(minGap, Math.min(size.width, size.height) * 0.32);
+    let gap = Math.max(120, Math.min(size.width, size.height) * 0.18);
+    if (n > 1) {
+      // Want availH / (baseSpanY + (n-1)*gap) ≈ availW / baseSpanX
+      const targetTotalY = (availH * baseSpanX) / availW;
+      const rawGap = (targetTotalY - baseSpanY) / (n - 1);
+      if (Number.isFinite(rawGap)) {
+        gap = Math.min(maxGap, Math.max(minGap, rawGap));
+      }
+    } else {
+      gap = 0;
+    }
+
+    const items = rawItems.map((item, i) => ({
+      ...item,
+      // Highest Z (earlier in Z-desc list) gets largest elevation.
+      elev: (n - 1 - i) * gap,
+    }));
 
     const allPts = [];
     const maxElev = (n - 1) * gap;
@@ -420,7 +417,7 @@ window.HwcStatusPanel = (() => {
 
     const spanX = Math.max(1, maxX - minX);
     const spanY = Math.max(1, maxY - minY);
-    const scale = Math.min((cssW - pad * 2) / spanX, (cssH - pad * 2) / spanY);
+    const scale = Math.min(availW / spanX, availH / spanY);
     if (!(scale > 0)) return;
     const ox = (cssW - spanX * scale) / 2 - minX * scale;
     const oy = (cssH - spanY * scale) / 2 - minY * scale;
@@ -440,7 +437,7 @@ window.HwcStatusPanel = (() => {
     );
 
     // Low Z first (bottom), high Z last (top).
-    [...items].reverse().forEach(({ layer, colorIndex, elev, view, isClient, label }) => {
+    [...items].reverse().forEach(({ layer, colorIndex, elev, view, isClient, mergedCount }) => {
       if (!view) return;
       const corners = layerCorners(view);
       const pts = corners.map((c) => toScreen(c.x, c.y, elev));
@@ -469,63 +466,76 @@ window.HwcStatusPanel = (() => {
 
       drawPoly(ctx, pts, colors.fill, colors.stroke, !!isClient);
 
-      drawOutsideLabel(ctx, pts, 0, label);
-      // Display bottom-left corner is layerCorners index 3 (x, y+h).
-      const vpuText = vpuLabelOf(layer);
-      if (vpuText) drawInsideLabel(ctx, pts, 3, vpuText);
+      const left = view.x || 0;
+      const top = view.y || 0;
+      const right = left + (view.width || 0);
+      const bottom = top + (view.height || 0);
+      const idText =
+        mergedCount > 1 ? `#${layer.id}×${mergedCount}` : `#${layer.id}`;
+      // Corners: 0=TL, 2=BR outside; 3=BL id inside the layer.
+      drawOutsideLabel(ctx, pts, 0, `[${left},${top}]`);
+      drawOutsideLabel(ctx, pts, 2, `(${right},${bottom})`);
+      drawInsideLabel(ctx, pts, 3, idText);
     });
+
+    renderLegend(layers);
   }
 
-  function renderList(payload) {
-    const { list } = els();
-    if (!list) return;
+  function fmtAlphaFloat(alpha) {
+    if (alpha?.float != null && Number.isFinite(Number(alpha.float))) {
+      return Number(alpha.float).toFixed(3);
+    }
+    if (alpha?.raw) {
+      const m = String(alpha.raw).match(/^([-\d.]+)/);
+      if (m) return Number(m[1]).toFixed(3);
+    }
+    return "—";
+  }
 
-    const layers = payload.layers || [];
+  function renderLegend(layers) {
+    const { legend } = els();
+    if (!legend) return;
+    legend.innerHTML = "";
     if (!layers.length) {
-      list.innerHTML = '<div class="hwc-st-empty">暂无图层</div>';
+      const empty = document.createElement("div");
+      empty.className = "hwc-legend-empty";
+      empty.textContent = "暂无图层";
+      legend.appendChild(empty);
       return;
     }
-    list.innerHTML = layers
-      .map((layer, i) => {
-        const colors = colorFor(i, FILL_ALPHA, layer);
-        const comp = `${escapeHtml(layer.comp || "—")}${
-          layer.comp_star ? "*" : ""
-        }`;
-        const content = escapeHtml(layer.content || "—");
-        const compType = String(layer.comp || "").trim().toLowerCase();
-        const isClient =
-          compType === "client" || compType.startsWith("client");
-        const isDevice = compType === "device";
-        return [
-          `<div class="hwc-st-row${isDevice ? " device" : ""}${
-            isClient ? " client" : ""
-          }">`,
-          `<div class="hwc-st-row-head">`,
-          `<span class="hwc-st-swatch${isClient ? " dashed" : ""}" style="background:${colors.fill};border-color:${colors.stroke}"></span>`,
-          `<span class="hwc-st-z">Z ${escapeHtml(String(layer.z))}</span>`,
-          `<span class="hwc-st-id">ID ${escapeHtml(String(layer.id))}</span>`,
-          `<span class="hwc-st-content">${content}</span>`,
-          `<span class="hwc-st-comp">${comp}</span>`,
-          `<span class="hwc-st-vpu">${escapeHtml(layer.vpu || "—")}</span>`,
-          `<span class="hwc-st-format">${escapeHtml(layer.format || "—")}</span>`,
-          `<span class="hwc-st-alpha">α ${escapeHtml(fmtAlpha(layer.alpha))}</span>`,
-          `</div>`,
-          `<div class="hwc-st-row-meta">`,
-          `View ${escapeHtml(fmtBox(layer.vpu_view))}`,
-          ` · Disp ${escapeHtml(fmtRect(layer.disp_frame))}`,
-          ` · Crop ${escapeHtml(fmtRect(layer.source_crop))}`,
-          ` · Clip ${escapeHtml(fmtBox(layer.vpu_clip))}`,
-          `</div>`,
-          `</div>`,
-        ].join("");
-      })
-      .join("");
+
+    // Z-desc order (same as payload.layers).
+    layers.forEach((layer, i) => {
+      const colors = colorFor(i, FILL_ALPHA, layer);
+      const row = document.createElement("div");
+      row.className = "hwc-legend-item";
+
+      const swatch = document.createElement("span");
+      swatch.className = "hwc-swatch";
+      swatch.style.background = colors.fill;
+      swatch.style.borderColor = colors.stroke;
+      swatch.classList.add(isClientComp(layer) ? "dashed" : "solid");
+
+      const label = document.createElement("span");
+      label.className = "hwc-legend-label";
+      const id = layer.id != null ? `#${layer.id}` : "#—";
+      const content = layer.content || "—";
+      const comp = `${layer.comp || "—"}${layer.comp_star ? "*" : ""}`;
+      const vpu = vpuLabelOf(layer) || layer.vpu || "—";
+      const format = layer.format || "—";
+      const alpha = fmtAlphaFloat(layer.alpha);
+      label.textContent = `${id} · ${content} · ${comp} · ${vpu} · ${format} · α ${alpha}`;
+      label.title = label.textContent;
+
+      row.appendChild(swatch);
+      row.appendChild(label);
+      legend.appendChild(row);
+    });
   }
 
   function render(payload) {
     draw(payload);
-    renderList(payload);
-    // List height can shrink the stage; redraw after layout settles.
+    // Legend height can shrink the stage; redraw after layout settles.
     requestAnimationFrame(() => {
       if (lastPayload) draw(lastPayload);
     });
