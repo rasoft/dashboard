@@ -107,6 +107,15 @@ window.HdmiPanel = (() => {
     }
   }
 
+  const REPEATABLE_KEYS = new Set([
+    "DPAD_UP",
+    "DPAD_DOWN",
+    "DPAD_LEFT",
+    "DPAD_RIGHT",
+    "VOLUME_UP",
+    "VOLUME_DOWN",
+  ]);
+
   function onAdbKeyDown(e) {
     if (!root || !document.body.contains(root)) return;
     if (e.altKey || e.ctrlKey || e.metaKey) return;
@@ -116,7 +125,8 @@ window.HdmiPanel = (() => {
     if (!mapped) return;
 
     e.preventDefault();
-    if (e.repeat) return;
+    // Allow OS key-repeat only for D-pad and volume.
+    if (e.repeat && !REPEATABLE_KEYS.has(mapped)) return;
     sendAdbKey(mapped);
   }
 

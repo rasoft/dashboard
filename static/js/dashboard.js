@@ -1,4 +1,15 @@
 const PANEL_DEFS = {
+  "adb-text": {
+    id: "adb-text",
+    title: "输入",
+    w: 5,
+    h: 5,
+    minW: 3,
+    minH: 4,
+    x: 0,
+    y: 0,
+    defaultOpen: false,
+  },
   remote: {
     id: "remote",
     title: "遥控器",
@@ -15,7 +26,7 @@ const PANEL_DEFS = {
   },
   hdmi: {
     id: "hdmi",
-    title: "屏幕",
+    title: "操作台",
     w: 9,
     h: 14,
     minW: 5,
@@ -129,6 +140,22 @@ const Dashboard = (() => {
 
   function togglePaused() {
     setPaused(!paused);
+  }
+
+  function isTypingTarget(el) {
+    if (!el || !(el instanceof Element)) return false;
+    const tag = el.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    return el.isContentEditable;
+  }
+
+  function onGlobalKeyDown(e) {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (isTypingTarget(e.target)) return;
+    if (e.code !== "Space" && e.key !== " ") return;
+    e.preventDefault();
+    if (e.repeat) return;
+    togglePaused();
   }
 
   function cloneTemplate(id) {
@@ -321,6 +348,8 @@ const Dashboard = (() => {
     const body = panel.querySelector(".panel-body");
     if (panelId === "remote") {
       body.appendChild(cloneTemplate("tpl-remote"));
+    } else if (panelId === "adb-text") {
+      body.appendChild(cloneTemplate("tpl-adb-text"));
     } else if (panelId === "hdmi") {
       body.appendChild(cloneTemplate("tpl-hdmi"));
     } else if (panelId === "ddr") {
@@ -381,6 +410,7 @@ const Dashboard = (() => {
 
     openPanels.add(panelId);
     if (panelId === "remote" && window.RemotePanel) window.RemotePanel.mount(panelEl);
+    if (panelId === "adb-text" && window.AdbTextPanel) window.AdbTextPanel.mount(panelEl);
     if (panelId === "hdmi" && window.HdmiPanel) window.HdmiPanel.mount(panelEl);
     if (panelId === "ddr" && window.DdrPanel) window.DdrPanel.mount(panelEl);
     if (panelId === "hwc" && window.HwcPanel) window.HwcPanel.mount(panelEl);
@@ -406,6 +436,9 @@ const Dashboard = (() => {
     }
     if (panelId === "remote" && window.RemotePanel?.unmount) {
       window.RemotePanel.unmount();
+    }
+    if (panelId === "adb-text" && window.AdbTextPanel?.unmount) {
+      window.AdbTextPanel.unmount();
     }
     if (panelId === "ddr" && window.DdrPanel?.unmount) {
       window.DdrPanel.unmount();
@@ -581,9 +614,11 @@ const Dashboard = (() => {
     document.getElementById("btn-refresh-status").addEventListener("click", refreshStatus);
     const pauseBtn = document.getElementById("btn-pause-toggle");
     if (pauseBtn) {
+      pauseBtn.title = "暂停 / 继续（空格）";
       pauseBtn.addEventListener("click", () => togglePaused());
       setPauseButton();
     }
+    window.addEventListener("keydown", onGlobalKeyDown, true);
     window.addEventListener("resize", () => {
       // Defer until layout settles so workspace height is non-zero.
       requestAnimationFrame(() => applyWorkspaceBounds());

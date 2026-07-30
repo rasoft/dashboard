@@ -6,16 +6,18 @@
 
 - **可拖拽面板框架**：关闭、移动、缩放，允许面板重叠；工作区高度固定，面板可部分拖出但不可全部拖出；每个面板会记住最后一次的大小与位置（含关闭后再打开）
 - **遥控器面板**：点击虚拟按键经 ADB 发送（默认关闭）
-- **屏幕面板**：经 MACROSILICON USB3 Video 采集，WebRTC 推送到浏览器（一路采集、多浏览器订阅）；打开后可用键盘发送方向键 / 确认 / 返回 / 音量到 ADB
+- **输入面板**：文本框经 ADB `input text` 发送字符串到设备（默认关闭）
+- **操作台面板**：经 MACROSILICON USB3 Video 采集，WebRTC 推送到浏览器（一路采集、多浏览器订阅）；打开后可用键盘发送方向键 / 确认 / 返回 / 音量到 ADB
 - **内存带宽面板**：经 ADB 读取 DDR monitor（含全表去重后的 `total` 汇总与各 client 曲线）；可用按钮开关各曲线图（默认显示 total / cpu / gpu / vpu）
 - **SurfaceFlinger - hwclayers 面板**：经 ADB `dumpsys SurfaceFlinger --hwclayers` 按秒刷新；用层 frame 以爆炸轴测图展示（绕 Z 共逆时针 270°；按表格顺序向上拉开；DEVICE 实线 / CLIENT 虚线），并在下方列出图例
 - **IComposer - VPU 面板**：经 ADB `dumpsys android.hardware.graphics.composer3.IComposer/default` 读取 NationalChip HWC 表；用 VPU View 以爆炸轴测图叠画各层位置，并按 Z 从大到小列出明细
 - **SurfaceFlinger - events 面板**：经 ADB `dumpsys SurfaceFlinger --events` 按秒采样 `mWorkDuration` / `mReadyDuration` / `last vsync time` 并绘制曲线
 - **SurfaceFlinger - frametimeline 面板**：经 ADB `dumpsys SurfaceFlinger --frametimeline -all`；打开面板后自动按秒刷新；横轴帧序号、纵轴 0–⌈末帧 Expected Present⌉₀₀ ms，绘制 Expected/Actual 的 Start→Present 区间（Jank 红色），点选查看 Layer 明细
 - 开始监测后按秒刷新实时网络带宽（WebRTC 收流统计）；未开播时显示预估
-- 打开屏幕面板后自动开始播放，并启用键盘 ADB 按键发送
-- 顶栏「暂停 / 继续」可冻结各面板数据刷新与屏幕 WebRTC 播放；继续时丢弃暂停期间积压的视频帧
+- 打开操作台面板后自动开始播放，并启用键盘 ADB 按键发送
+- 顶栏「暂停 / 继续」可冻结各面板数据刷新与操作台 WebRTC 播放；继续时丢弃暂停期间积压的视频帧
 - 遥控器面板默认不打开
+- 输入面板默认不打开
 - 打开内存带宽面板后会自动启用 debugfs monitor 并按秒采样；设备重启 / adb 重连后若 status_raw 不可读，会自动重新 `adb root` + mount debugfs + enable
 - 打开 SurfaceFlinger - hwclayers 面板后自动按秒刷新
 - 打开 IComposer - VPU 面板后自动按秒刷新
@@ -87,13 +89,14 @@ http://<工作站IP>:5000
 1. 用 USB 连接 Android 开发板，执行 `adb devices` 确认已授权
 2. 将开发板 HDMI 接到 MACROSILICON USB3 采集卡
 3. 打开 Dashboard，顶栏查看 ADB / HDMI 状态
-4. **屏幕**：打开面板后默认以 1920×1080 自动开始监测；可用键盘发送方向键 / 确认 / 返回 / 音量到设备；可改分辨率或点「停止」后手动再开
+4. **操作台**：打开面板后默认以 1920×1080 自动开始监测；可用键盘发送方向键 / 确认 / 返回 / 音量到设备；可改分辨率或点「停止」后手动再开
 5. **遥控器**：默认关闭；打开后点击虚拟按键发送
-6. **内存带宽**：打开面板后自动执行 `adb root`、挂载 debugfs、启用 DDR monitor，并每秒采样各 client 绘制曲线（默认显示 `cpu_a55_main` / `gpu` / `vpu`）
-7. **SurfaceFlinger - hwclayers**：打开面板后每秒读取 SurfaceFlinger HWC layers，按表格顺序向上拉开绘制爆炸轴测图（CLIENT 虚线），并在下方列出图例
-8. **IComposer - VPU**：打开面板后每秒读取 composer dumpsys 中的 NationalChip HWC 表；用 VPU View 爆炸轴测图展示屏幕位置，并按 Z 从大到小列出各层
-9. **SurfaceFlinger - events**：打开面板后每秒读取 SurfaceFlinger events，绘制 work / ready / last vsync 时序曲线
-10. **SurfaceFlinger - frametimeline**：打开面板后自动按秒刷新；横轴帧序号、纵轴 0–⌈末帧 Expected Present⌉₀₀ ms，并排绘制 Expected/Actual 的 Start→Present；点击某一帧查看 Layer 明细
+6. **输入**：默认关闭；打开后面板内输入文本，点「发送」或按 Enter，经 `adb shell input text` 发到设备
+7. **内存带宽**：打开面板后自动执行 `adb root`、挂载 debugfs、启用 DDR monitor，并每秒采样各 client 绘制曲线（默认显示 `cpu_a55_main` / `gpu` / `vpu`）
+8. **SurfaceFlinger - hwclayers**：打开面板后每秒读取 SurfaceFlinger HWC layers，按表格顺序向上拉开绘制爆炸轴测图（CLIENT 虚线），并在下方列出图例
+9. **IComposer - VPU**：打开面板后每秒读取 composer dumpsys 中的 NationalChip HWC 表；用 VPU View 爆炸轴测图展示屏幕位置，并按 Z 从大到小列出各层
+10. **SurfaceFlinger - events**：打开面板后每秒读取 SurfaceFlinger events，绘制 work / ready / last vsync 时序曲线
+11. **SurfaceFlinger - frametimeline**：打开面板后自动按秒刷新；横轴帧序号、纵轴 0–⌈末帧 Expected Present⌉₀₀ ms，并排绘制 Expected/Actual 的 Start→Present；点击某一帧查看 Layer 明细
 
 同一时间可多浏览器订阅同一路 HDMI 采集（一路采集、多路转发）。
 
@@ -101,6 +104,7 @@ http://<工作站IP>:5000
 
 - `GET /api/status` — ADB / HDMI / 串口概览
 - `POST /api/remote/key` — `{ "key": "DPAD_UP" }`
+- `POST /api/remote/text` — `{ "text": "hello" }`（经 `adb shell input text`）
 - `GET /api/hdmi/devices`
 - `GET /api/hdmi/ice-servers` — 浏览器/服务端共用的 STUN/TURN 配置
 - `GET /api/hdmi/bandwidth?width=1920&height=1080&fps=30&audio=1`

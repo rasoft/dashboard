@@ -35,6 +35,17 @@ def remote_key():
     return jsonify(result), status
 
 
+@api_bp.post("/remote/text")
+def remote_text():
+    data = request.get_json(silent=True) or {}
+    text = data.get("text", "")
+    if not isinstance(text, str):
+        text = str(text)
+    result = adb.send_text(text)
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
 @api_bp.get("/hdmi/devices")
 def hdmi_devices():
     return jsonify(capture.get_capture_status())

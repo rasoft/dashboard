@@ -145,3 +145,45 @@ def send_key(key: str) -> dict[str, Any]:
         return {"ok": False, "error": err}
 
     return {"ok": True, "key": key}
+
+
+def escape_input_text(text: str) -> str:
+    """Escape a string for `adb shell input text`."""
+    # `input text` treats space as %s; backslash escapes specials for the Android shell.
+    escaped: list[str] = []
+    for ch in text:
+        if ch == " ":
+            escaped.append("%s")
+        elif ch == "%":
+            escaped.append("\\%")
+        elif ch == "\\":
+            escaped.append("\\\\")
+        elif ch in "'\"&<>|(){};$`":
+            escaped.append("\\" + ch)
+        else:
+            escaped.append(ch)
+    return "".join(escaped)
+
+
+def send_text(text: str) -> dict[str, Any]:
+    """Send text via `adb shell input text …`."""
+    raw = text if isinstance(text, str) else ""
+    if raw == "":
+        return {"ok": False, "error": "empty text"}
+
+    status = get_status()
+    if not status["available"]:
+        return {"ok": False, "error": "no adb device online"}
+
+    payload = escape_input_text(raw)
+    base = _adb_base()
+    try:
+        result = _run(base + ["shell", "input", "text", payload], timeout=10.0)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"ok": False, "error": str(exc)}
+
+    if result.returncode != 0:
+        err = (result.stderr or result.stdout or "adb input text failed").strip()
+        return {"ok": False, "error": err}
+
+    return {"ok": True, "text": raw, "escaped": payload}

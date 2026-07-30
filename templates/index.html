@@ -37,12 +37,13 @@
           <button type="button" data-panel="sf-frametimeline">SurfaceFlinger - frametimeline</button>
           <button type="button" data-panel="hwc">SurfaceFlinger - hwclayers</button>
           <button type="button" data-panel="ddr">内存带宽</button>
-          <button type="button" data-panel="hdmi">屏幕</button>
+          <button type="button" data-panel="hdmi">操作台</button>
+          <button type="button" data-panel="adb-text">输入</button>
           <button type="button" data-panel="remote">遥控器</button>
         </div>
       </div>
       <button type="button" class="btn btn-ghost" id="btn-refresh-status">刷新状态</button>
-      <button type="button" class="btn" id="btn-pause-toggle" data-paused="0">暂停</button>
+      <button type="button" class="btn" id="btn-pause-toggle" data-paused="0" title="暂停 / 继续（空格）">暂停</button>
     </div>
   </header>
 
@@ -105,6 +106,23 @@
         </div>
       </div>
       <p class="remote-feedback" id="remote-feedback"></p>
+    </div>
+  </template>
+
+  <template id="tpl-adb-text">
+    <div class="adb-text">
+      <div class="adb-text-row">
+        <input
+          type="text"
+          id="adb-text-input"
+          class="adb-text-input"
+          placeholder="输入要发送到设备的文本"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button type="button" id="adb-text-send" class="btn">发送</button>
+      </div>
+      <p class="adb-text-status" id="adb-text-status"></p>
     </div>
   </template>
 
@@ -281,6 +299,7 @@
   <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <script src="{{ url_for('static', filename='js/remote.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/adb-text.js') }}"></script>
   <script src="{{ url_for('static', filename='js/hdmi.js') }}"></script>
   <script src="{{ url_for('static', filename='js/ddr.js') }}"></script>
   <script src="{{ url_for('static', filename='js/hwc.js') }}"></script>
