@@ -277,6 +277,16 @@ body {
   background: rgba(255, 255, 255, 0.04);
 }
 
+.icon-btn[data-action="fullscreen"][data-fullscreen="1"] {
+  color: var(--text);
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.panel.is-fullscreen .panel-header {
+  background: rgba(61, 156, 240, 0.08);
+}
+
 .panel-body {
   flex: 1;
   overflow: auto;

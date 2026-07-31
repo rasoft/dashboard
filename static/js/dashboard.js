@@ -133,6 +133,8 @@ const Dashboard = (() => {
   let savedGridHeight = null;
   let savedStageStyles = null;
   const PRINT_STAGE_H = 560;
+  /** panelId -> geometry/constraints to restore after leaving fullscreen */
+  const fullscreenRestore = new Map();
 
   function isPaused() {
     return paused;
@@ -180,6 +182,13 @@ const Dashboard = (() => {
   function onGlobalKeyDown(e) {
     if (e.altKey || e.ctrlKey || e.metaKey) return;
     if (isTypingTarget(e.target)) return;
+    if (e.key === "Escape" && fullscreenRestore.size) {
+      e.preventDefault();
+      if (e.repeat) return;
+      const ids = [...fullscreenRestore.keys()];
+      exitFullscreen(ids[ids.length - 1]);
+      return;
+    }
     if (e.code !== "Space" && e.key !== " ") return;
     e.preventDefault();
     if (e.repeat) return;
@@ -288,8 +297,161 @@ const Dashboard = (() => {
     if (grid.engine) grid.engine.maxRow = 0;
     installPartialBoundFix();
     installOverlapFix();
+    syncFullscreenPanels();
     // Do not clampAllPanels() here — window resize / init must not rewrite
     // saved positions into localStorage.
+  }
+
+  function workspaceGridSize() {
+    return {
+      cols: grid?.getColumn?.() || 12,
+      rows: availableRows(),
+    };
+  }
+
+  function layoutForPersist(node) {
+    const def = PANEL_DEFS[node.id];
+    const saved = fullscreenRestore.get(node.id);
+    if (saved) {
+      return {
+        x: Number(saved.x) || 0,
+        y: Number(saved.y) || 0,
+        w: def?.lockedSize ? def.w : Math.max(1, Number(saved.w) || def?.w || 1),
+        h: def?.lockedSize ? def.h : Math.max(1, Number(saved.h) || def?.h || 1),
+      };
+    }
+    return {
+      x: Number(node.x) || 0,
+      y: Number(node.y) || 0,
+      w: def?.lockedSize ? def.w : Math.max(1, Number(node.w) || def?.w || 1),
+      h: def?.lockedSize ? def.h : Math.max(1, Number(node.h) || def?.h || 1),
+    };
+  }
+
+  function setFullscreenButton(panel, on) {
+    const btn = panel?.querySelector('[data-action="fullscreen"]');
+    if (!btn) return;
+    btn.dataset.fullscreen = on ? "1" : "0";
+    btn.title = on ? "退出全屏（Esc）" : "全屏";
+    btn.setAttribute("aria-label", btn.title);
+    btn.textContent = on ? "❐" : "⛶";
+  }
+
+  function notifyPanelResize() {
+    // Prefer dashboard:redraw — a window "resize" would let GridStack rewrite geometry.
+    requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent("dashboard:redraw"));
+    });
+  }
+
+  function syncFullscreenPanels() {
+    if (!grid || !fullscreenRestore.size) return;
+    const { cols, rows } = workspaceGridSize();
+    let changed = false;
+    fullscreenRestore.forEach((_saved, panelId) => {
+      const node = grid.engine.nodes.find((n) => n.id === panelId);
+      if (!node?.el) return;
+      if (node.x === 0 && node.y === 0 && node.w === cols && node.h === rows) return;
+      clamping = true;
+      try {
+        grid.update(node.el, { x: 0, y: 0, w: cols, h: rows });
+        changed = true;
+      } finally {
+        clamping = false;
+      }
+    });
+    if (changed) notifyPanelResize();
+  }
+
+  function enterFullscreen(panelId) {
+    if (!grid || !PANEL_DEFS[panelId] || fullscreenRestore.has(panelId)) return;
+    // Only one panel fills the workspace at a time.
+    [...fullscreenRestore.keys()].forEach((id) => {
+      if (id !== panelId) exitFullscreen(id);
+    });
+
+    const node = grid.engine.nodes.find((n) => n.id === panelId);
+    if (!node?.el) return;
+
+    fullscreenRestore.set(panelId, {
+      x: Number(node.x) || 0,
+      y: Number(node.y) || 0,
+      w: Math.max(1, Number(node.w) || 1),
+      h: Math.max(1, Number(node.h) || 1),
+      maxW: node.maxW,
+      maxH: node.maxH,
+      noResize: !!node.noResize,
+      noMove: !!node.noMove,
+    });
+
+    const { cols, rows } = workspaceGridSize();
+    node.maxW = undefined;
+    node.maxH = undefined;
+    node.noResize = true;
+    node.noMove = true;
+
+    clamping = true;
+    try {
+      grid.update(node.el, {
+        x: 0,
+        y: 0,
+        w: cols,
+        h: Math.max(rows, 8),
+        noResize: true,
+        noMove: true,
+      });
+    } finally {
+      clamping = false;
+    }
+
+    bringToFront(node.el);
+    const panel = node.el.querySelector(".panel");
+    panel?.classList.add("is-fullscreen");
+    setFullscreenButton(panel, true);
+    notifyPanelResize();
+  }
+
+  function exitFullscreen(panelId) {
+    const saved = fullscreenRestore.get(panelId);
+    if (!saved) return;
+
+    const node = grid.engine.nodes.find((n) => n.id === panelId);
+    fullscreenRestore.delete(panelId);
+    if (!node?.el) return;
+
+    const def = PANEL_DEFS[panelId];
+    const w = def?.lockedSize ? def.w : saved.w;
+    const h = def?.lockedSize ? def.h : saved.h;
+    node.maxW = def?.maxW ?? saved.maxW;
+    node.maxH = def?.maxH ?? saved.maxH;
+    node.noResize = def?.lockedSize ? true : !!saved.noResize;
+    node.noMove = !!saved.noMove;
+
+    clamping = true;
+    try {
+      grid.update(node.el, {
+        x: saved.x,
+        y: saved.y,
+        w,
+        h,
+        maxW: node.maxW,
+        maxH: node.maxH,
+        noResize: node.noResize,
+        noMove: node.noMove,
+      });
+    } finally {
+      clamping = false;
+    }
+
+    const panel = node.el.querySelector(".panel");
+    panel?.classList.remove("is-fullscreen");
+    setFullscreenButton(panel, false);
+    notifyPanelResize();
+  }
+
+  function toggleFullscreen(panelId) {
+    if (fullscreenRestore.has(panelId)) exitFullscreen(panelId);
+    else enterFullscreen(panelId);
   }
 
   function sanitizeGeometry(panelId, geo) {
@@ -456,6 +618,13 @@ const Dashboard = (() => {
       e.stopPropagation();
       closePanel(panelId);
     });
+    panel.querySelector('[data-action="fullscreen"]')?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleFullscreen(panelId);
+    });
+    panel.querySelector('[data-action="fullscreen"]')?.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+    });
 
     // Click anywhere on the panel (header or body) to raise it above siblings.
     panel.addEventListener("pointerdown", (e) => {
@@ -571,15 +740,11 @@ const Dashboard = (() => {
     const node = grid.engine.nodes.find((n) => n.id === panelId);
     if (node) {
       const store = loadStore();
-      const def = PANEL_DEFS[panelId];
-      store.layouts[panelId] = {
-        x: node.x,
-        y: node.y,
-        w: def?.lockedSize ? def.w : node.w,
-        h: def?.lockedSize ? def.h : node.h,
-      };
+      store.layouts[panelId] = layoutForPersist(node);
       saveStore(store);
     }
+
+    fullscreenRestore.delete(panelId);
 
     if (node?.el) grid.removeWidget(node.el);
     openPanels.delete(panelId);
@@ -594,13 +759,7 @@ const Dashboard = (() => {
     // fall back to PANEL_DEFS default sizes.
     (grid.engine?.nodes || []).forEach((node) => {
       if (!node?.id) return;
-      const def = PANEL_DEFS[node.id];
-      store.layouts[node.id] = {
-        x: Number(node.x) || 0,
-        y: Number(node.y) || 0,
-        w: def?.lockedSize ? def.w : Math.max(1, Number(node.w) || def?.w || 1),
-        h: def?.lockedSize ? def.h : Math.max(1, Number(node.h) || def?.h || 1),
-      };
+      store.layouts[node.id] = layoutForPersist(node);
     });
     store.open = [...openPanels];
     saveStore(store);
