@@ -212,12 +212,25 @@ window.DiskstatsPanel = (() => {
     return track.label || track.device || track.key;
   }
 
-  function deviceLine(track, row) {
+  function maxTotalInWindow(key) {
+    const arr = series[`${key}Total`] || [];
+    let max = null;
+    for (let i = 0; i < arr.length; i += 1) {
+      const v = arr[i];
+      if (v == null || Number.isNaN(v)) continue;
+      if (max == null || v > max) max = v;
+    }
+    return max;
+  }
+
+  function deviceLine(track, row, maxTotalMbps) {
     const name = trackTitle(track);
     if (!row) return `${name} · —`;
+    const maxText =
+      maxTotalMbps == null ? "—" : Number(maxTotalMbps).toFixed(2);
     return (
       `${name} · RD ${formatMBps(row.rd_bps)} · WR ${formatMBps(row.wr_bps)} · ` +
-      `Total ${formatMBps(row.total_bps)} MB/s`
+      `Total ${formatMBps(row.total_bps)} · Peak ${maxText}`
     );
   }
 
@@ -275,13 +288,19 @@ window.DiskstatsPanel = (() => {
       series[`${t.key}Rd`].push(row ? toMBps(row.rd_bps) : null);
       series[`${t.key}Wr`].push(row ? toMBps(row.wr_bps) : null);
       series[`${t.key}Total`].push(row ? toMBps(row.total_bps) : null);
-      setMetaLine(trackNodes(t.key).meta, deviceLine(t, row));
     });
 
     while (labels.length > MAX_POINTS) {
       labels.shift();
       Object.values(series).forEach((arr) => arr.shift());
     }
+
+    tracks.forEach((t) => {
+      setMetaLine(
+        trackNodes(t.key).meta,
+        deviceLine(t, rates[t.key], maxTotalInWindow(t.key))
+      );
+    });
 
     updateCharts();
   }

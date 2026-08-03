@@ -302,7 +302,7 @@ window.DdrPanel = (() => {
       maxTotalMbps == null ? "—" : Number(maxTotalMbps).toFixed(2);
     return (
       `${name} · RD ${formatMbps(row.rd_bps)} · WR ${formatMbps(row.wr_bps)} · ` +
-      `Total ${formatMbps(row.total_bps)} MB/s · Peak ${maxText}`
+      `Total ${formatMbps(row.total_bps)} · Peak ${maxText}`
     );
   }
 
