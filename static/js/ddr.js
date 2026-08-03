@@ -285,11 +285,24 @@ window.DdrPanel = (() => {
     setTrackEnabled(key, !enabled[key]);
   }
 
-  function clientLine(name, row) {
+  function maxTotalInWindow(key) {
+    const arr = series[`${key}Total`];
+    let max = null;
+    for (let i = 0; i < arr.length; i += 1) {
+      const v = arr[i];
+      if (v == null || Number.isNaN(v)) continue;
+      if (max == null || v > max) max = v;
+    }
+    return max;
+  }
+
+  function clientLine(name, row, maxTotalMbps) {
     if (!row) return `${name} · —`;
+    const maxText =
+      maxTotalMbps == null ? "—" : Number(maxTotalMbps).toFixed(2);
     return (
       `${name} · RD ${formatMbps(row.rd_bps)} · WR ${formatMbps(row.wr_bps)} · ` +
-      `Total ${formatMbps(row.total_bps)} MB/s`
+      `Total ${formatMbps(row.total_bps)} MB/s · Peak ${maxText}`
     );
   }
 
@@ -346,9 +359,15 @@ window.DdrPanel = (() => {
     updateCharts();
 
     const nodes = els();
-    setMetaLine(nodes.meta_total, clientLine("total", totalRow));
+    setMetaLine(
+      nodes.meta_total,
+      clientLine("total", totalRow, maxTotalInWindow("total"))
+    );
     sampleRows.forEach(({ track, row }) => {
-      setMetaLine(nodes[`meta_${track.key}`], clientLine(track.target, row));
+      setMetaLine(
+        nodes[`meta_${track.key}`],
+        clientLine(track.target, row, maxTotalInWindow(track.key))
+      );
     });
   }
 
