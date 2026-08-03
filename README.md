@@ -12,7 +12,7 @@
 - **SurfaceFlinger - hwclayers 面板**：经 ADB `dumpsys SurfaceFlinger --hwclayers` 按秒刷新；用层 frame 以爆炸轴测图展示（绕 Z 共逆时针 270°；按表格顺序向上拉开；DEVICE 实线 / CLIENT 虚线），并在下方列出图例
 - **IComposer - VPU 面板**：经 ADB `dumpsys android.hardware.graphics.composer3.IComposer/default` 读取 NationalChip HWC 表；用 VPU View 以爆炸轴测图叠画各层位置，并按 Z 从大到小列出明细
 - **SurfaceFlinger - events 面板**：经 ADB `dumpsys SurfaceFlinger --events` 按秒采样 `mWorkDuration` / `mReadyDuration` / `last vsync time` 并绘制曲线
-- **SurfaceFlinger - frametimeline 面板**：经 ADB `dumpsys SurfaceFlinger --frametimeline -all`；打开面板后自动按秒刷新；横轴帧序号、纵轴 0–⌈末帧 Expected Present⌉₀₀ ms，绘制 Expected/Actual 的 Start→Present 区间（Jank 红色），点选查看 Layer 明细
+- **SurfaceFlinger - frametimeline 面板**：经 ADB `dumpsys SurfaceFlinger --frametimeline -all`；打开面板后自动按秒刷新；纵轴帧序号、横轴 0–⌈末帧 Expected Present⌉₀₀ ms，绘制 Expected/Actual 的 Start→Present 区间（Jank 红色），点选查看 Layer 明细
 - **proc - meminfo 面板**：经 ADB 读取 `/proc/meminfo`，按秒采样；层叠曲线展示 Swap 已用 / Cached+Buffers / AnonPages，并叠加 MemUsed 曲线（默认关闭）
 - **proc - diskstats 面板**：经 ADB 读取 `/proc/diskstats`；打开时用 `df` 自动映射 `/` `/metadata` `/system_ext` `/vendor` `/product` `/cache` `/data` 到块设备，并与 mmcblk0 / zram0 一起分图绘制读写吞吐（布局同内存带宽；默认关闭）
 - 开始监测后按秒刷新实时网络带宽（WebRTC 收流统计）；未开播时显示预估
@@ -100,7 +100,7 @@ http://<工作站IP>:5000
 8. **SurfaceFlinger - hwclayers**：打开面板后每秒读取 SurfaceFlinger HWC layers，按表格顺序向上拉开绘制爆炸轴测图（CLIENT 虚线），并在下方列出图例
 9. **IComposer - VPU**：打开面板后每秒读取 composer dumpsys 中的 NationalChip HWC 表；用 VPU View 爆炸轴测图展示屏幕位置，并按 Z 从大到小列出各层
 10. **SurfaceFlinger - events**：打开面板后每秒读取 SurfaceFlinger events，绘制 work / ready / last vsync 时序曲线
-11. **SurfaceFlinger - frametimeline**：打开面板后自动按秒刷新；横轴帧序号、纵轴 0–⌈末帧 Expected Present⌉₀₀ ms，并排绘制 Expected/Actual 的 Start→Present；点击某一帧查看 Layer 明细
+11. **SurfaceFlinger - frametimeline**：打开面板后自动按秒刷新；纵轴帧序号、横轴 0–⌈末帧 Expected Present⌉₀₀ ms，并排绘制 Expected/Actual 的 Start→Present；点击某一帧查看 Layer 明细
 12. **proc - meminfo**：默认关闭；打开后按秒读取 `/proc/meminfo`，层叠绘制 Swap 已用 / Cached+Buffers / AnonPages，并叠加 MemUsed 曲线
 13. **proc - diskstats**：默认关闭；打开后经 `df` 映射挂载点到块设备，分图绘制 mmcblk0 / zram0 与各挂载分区的 RD / WR / Total（MB/s）；默认打开 mmcblk0、zram0、`/`、`/data`
 
