@@ -628,21 +628,14 @@ window.SfFrametimelinePanel = (() => {
       return;
     }
 
-    const exp = spanStartPresent(frame.sf?.expected);
-    const act = spanStartPresent(frame.sf?.actual);
+    const jankType = (frame.jank_type || "").trim();
+    const showJank = isJanky(frame);
     const head = [
       `<div class="sf-ftl-detail-head">`,
       `<strong>Display Frame #${frame.index}</strong>`,
-      isJanky(frame) ? `<span class="sf-ftl-badge jank">Jank</span>` : "",
-      `<span class="sf-ftl-muted">Expected ${
-        exp ? `${fmtMs(exp.start)} → ${fmtMs(exp.end)}` : "—"
-      }</span>`,
-      `<span class="sf-ftl-muted">Actual ${
-        act ? `${fmtMs(act.start)} → ${fmtMs(act.end)}` : "—"
-      }</span>`,
-      `<span class="sf-ftl-muted">Δ present ${fmtMs(frame.present_delta_ms)}</span>`,
-      frame.jank_type
-        ? `<span class="sf-ftl-muted">${escapeHtml(frame.jank_type)}</span>`
+      showJank ? `<span class="sf-ftl-badge jank">Jank</span>` : "",
+      showJank && jankType && jankType.toLowerCase() !== "none"
+        ? `<span class="sf-ftl-muted">${escapeHtml(jankType)}</span>`
         : "",
       `</div>`,
     ].join("");
