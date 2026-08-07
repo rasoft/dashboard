@@ -8,7 +8,8 @@
 - **遥控器面板**：点击虚拟按键经 ADB 发送（默认关闭）
 - **输入面板**：文本框经 ADB `input text` 发送字符串到设备（默认关闭）
 - **操作台面板**：经 MACROSILICON USB3 Video 采集，WebRTC 推送到浏览器（一路采集、多浏览器订阅）；打开后可用键盘发送方向键 / 确认 / 返回 / 音量到 ADB
-- **内存带宽面板**：经 ADB 读取 DDR monitor（含全表去重后的 `total` 汇总与各 client 曲线）；可用按钮开关各曲线图（默认显示 total / cpu / gpu / vpu）
+- **内存带宽 - 吞吐量面板**：经 ADB 读取 DDR monitor（含全表去重后的 `total` 汇总与各 client 曲线）；可用按钮开关各曲线图（默认显示 total / cpu / gpu / vpu）
+- **内存带宽 - 效率面板**：同源 `status_raw`；曲线为 `RD BW / RD Trans`、`WR BW / WR Trans`（Trans 为 0 时记 0；单位 B/trans）；布局同吞吐量面板（默认关闭）
 - **SurfaceFlinger - hwclayers 面板**：经 ADB `dumpsys SurfaceFlinger --hwclayers` 按秒刷新；用层 frame 以爆炸轴测图展示（绕 Z 共逆时针 270°；按表格顺序向上拉开；DEVICE 实线 / CLIENT 虚线），并在下方列出图例
 - **IComposer - VPU 面板**：经 ADB `dumpsys android.hardware.graphics.composer3.IComposer/default` 读取 NationalChip HWC 表；用 VPU View 以爆炸轴测图叠画各层位置，并按 Z 从大到小列出明细
 - **SurfaceFlinger - events 面板**：经 ADB `dumpsys SurfaceFlinger --events` 按秒采样 `mWorkDuration` / `mReadyDuration` / `last vsync time` 并绘制曲线
@@ -20,7 +21,7 @@
 - 顶栏「暂停 / 继续」可冻结各面板数据刷新与操作台 WebRTC 播放；继续时丢弃暂停期间积压的视频帧
 - 遥控器面板默认不打开
 - 输入面板默认不打开
-- 打开内存带宽面板后会自动启用 debugfs monitor 并按秒采样；设备重启 / adb 重连后若 status_raw 不可读，会自动重新 `adb root` + mount debugfs + enable
+- 打开内存带宽 - 吞吐量 / 效率面板后会自动启用 debugfs monitor 并按秒采样；设备重启 / adb 重连后若 status_raw 不可读，会自动重新 `adb root` + mount debugfs + enable
 - 打开 SurfaceFlinger - hwclayers 面板后自动按秒刷新
 - 打开 IComposer - VPU 面板后自动按秒刷新
 - 打开 SurfaceFlinger - events 面板后自动按秒刷新
@@ -96,13 +97,14 @@ http://<工作站IP>:5000
 4. **操作台**：打开面板后默认以 1920×1080 自动开始监测；可用键盘发送方向键 / 确认 / 返回 / 音量到设备；可改分辨率或点「停止」后手动再开
 5. **遥控器**：默认关闭；打开后点击虚拟按键发送
 6. **输入**：默认关闭；打开后面板内输入文本，点「发送」或按 Enter，经 `adb shell input text` 发到设备
-7. **内存带宽**：打开面板后自动执行 `adb root`、挂载 debugfs、启用 DDR monitor，并每秒采样各 client 绘制曲线（默认显示 `cpu_a55_main` / `gpu` / `vpu`）
-8. **SurfaceFlinger - hwclayers**：打开面板后每秒读取 SurfaceFlinger HWC layers，按表格顺序向上拉开绘制爆炸轴测图（CLIENT 虚线），并在下方列出图例
-9. **IComposer - VPU**：打开面板后每秒读取 composer dumpsys 中的 NationalChip HWC 表；用 VPU View 爆炸轴测图展示屏幕位置，并按 Z 从大到小列出各层
-10. **SurfaceFlinger - events**：打开面板后每秒读取 SurfaceFlinger events，绘制 work / ready / last vsync 时序曲线
-11. **SurfaceFlinger - frametimeline**：打开面板后自动按秒刷新；纵轴帧序号、横轴 0–⌈末帧 Expected Present⌉₀₀ ms，并排绘制 Expected/Actual 的 Start→Present；点击某一帧查看 Layer 明细
-12. **proc - meminfo**：默认关闭；打开后按秒读取 `/proc/meminfo`，层叠绘制 Swap 已用 / Cached+Buffers / AnonPages，并叠加 MemUsed 曲线
-13. **proc - diskstats**：默认关闭；打开后经 `df` 映射挂载点到块设备，分图绘制 mmcblk0 / zram0 与各挂载分区的 RD / WR / Total（MB/s）；默认打开 mmcblk0、zram0、`/`、`/data`
+7. **内存带宽 - 吞吐量**：打开面板后自动执行 `adb root`、挂载 debugfs、启用 DDR monitor，并每秒采样各 client 绘制曲线（默认显示 `cpu_a55_main` / `gpu` / `vpu`）
+8. **内存带宽 - 效率**：默认关闭；同源 DDR monitor，绘制各 client 的 `RD BW/RD Trans` 与 `WR BW/WR Trans`（B/trans）
+9. **SurfaceFlinger - hwclayers**：打开面板后每秒读取 SurfaceFlinger HWC layers，按表格顺序向上拉开绘制爆炸轴测图（CLIENT 虚线），并在下方列出图例
+10. **IComposer - VPU**：打开面板后每秒读取 composer dumpsys 中的 NationalChip HWC 表；用 VPU View 爆炸轴测图展示屏幕位置，并按 Z 从大到小列出各层
+11. **SurfaceFlinger - events**：打开面板后每秒读取 SurfaceFlinger events，绘制 work / ready / last vsync 时序曲线
+12. **SurfaceFlinger - frametimeline**：打开面板后自动按秒刷新；纵轴帧序号、横轴 0–⌈末帧 Expected Present⌉₀₀ ms，并排绘制 Expected/Actual 的 Start→Present；点击某一帧查看 Layer 明细
+13. **proc - meminfo**：默认关闭；打开后按秒读取 `/proc/meminfo`，层叠绘制 Swap 已用 / Cached+Buffers / AnonPages，并叠加 MemUsed 曲线
+14. **proc - diskstats**：默认关闭；打开后经 `df` 映射挂载点到块设备，分图绘制 mmcblk0 / zram0 与各挂载分区的 RD / WR / Total（MB/s）；默认打开 mmcblk0、zram0、`/`、`/data`
 
 同一时间可多浏览器订阅同一路 HDMI 采集（一路采集、多路转发）。
 
@@ -115,7 +117,7 @@ http://<工作站IP>:5000
 - `GET /api/hdmi/ice-servers` — 浏览器/服务端共用的 STUN/TURN 配置
 - `GET /api/hdmi/bandwidth?width=1920&height=1080&fps=30&audio=1`
 - `POST /api/ddr/enable` — 启用 DDR debugfs monitor
-- `GET /api/ddr/sample?targets=cpu_a55_main,gpu,vpu,vdec_4k,vdec_2k_jpeg,emmc_sd,usb_pcie,phy_eth_dac` — 读取一次内存带宽
+- `GET /api/ddr/sample?targets=cpu_a55_main,gpu,vpu,vdec_4k,vdec_2k_jpeg,emmc_sd,usb_pcie,phy_eth_dac` — 读取一次内存带宽（含 `rd_trans` / `wr_trans`，供吞吐量与效率面板共用）
 - `GET /api/hwc/layers` — 读取 SurfaceFlinger HWC 图层
 - `GET /api/hwc/status` — 读取 NationalChip HWC 状态表（composer dumpsys）
 - `GET /api/sf/events` — 读取 SurfaceFlinger events 时序字段

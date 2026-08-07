@@ -36,7 +36,8 @@
           <button type="button" data-panel="sf-events">SurfaceFlinger - events</button>
           <button type="button" data-panel="sf-frametimeline">SurfaceFlinger - frametimeline</button>
           <button type="button" data-panel="hwc">SurfaceFlinger - hwclayers</button>
-          <button type="button" data-panel="ddr">内存带宽</button>
+          <button type="button" data-panel="ddr">内存带宽 - 吞吐量</button>
+          <button type="button" data-panel="ddr-eff">内存带宽 - 效率</button>
           <button type="button" data-panel="proc-meminfo">proc - meminfo</button>
           <button type="button" data-panel="proc-diskstats">proc - diskstats</button>
           <button type="button" data-panel="hdmi">操作台</button>
@@ -235,6 +236,86 @@
     </div>
   </template>
 
+  <template id="tpl-ddr-eff">
+    <div class="ddr ddr-eff">
+      <div class="ddr-track-toggles" id="ddr-eff-track-toggles" aria-label="效率曲线图开关">
+        <button type="button" class="ddr-track-btn" data-track="total" aria-pressed="true">total</button>
+        <button type="button" class="ddr-track-btn" data-track="cpu" aria-pressed="true">cpu_a55_main</button>
+        <button type="button" class="ddr-track-btn" data-track="gpu" aria-pressed="true">gpu</button>
+        <button type="button" class="ddr-track-btn" data-track="vpu" aria-pressed="true">vpu</button>
+        <button type="button" class="ddr-track-btn" data-track="audio" aria-pressed="false">audio</button>
+        <button type="button" class="ddr-track-btn" data-track="vdec" aria-pressed="false">vdec_4k</button>
+        <button type="button" class="ddr-track-btn" data-track="vdec2k" aria-pressed="false">vdec_2k_jpeg</button>
+        <button type="button" class="ddr-track-btn" data-track="emmc" aria-pressed="false">emmc_sd</button>
+        <button type="button" class="ddr-track-btn" data-track="usbpcie" aria-pressed="false">usb_pcie</button>
+        <button type="button" class="ddr-track-btn" data-track="phyeth" aria-pressed="false">phy_eth_dac</button>
+      </div>
+      <div class="ddr-charts">
+        <section class="ddr-chart-block" data-track="total">
+          <div class="ddr-meta ddr-meta-total" id="ddr-eff-meta-total">total · —</div>
+          <div class="ddr-chart-wrap">
+            <canvas id="ddr-eff-chart-total" aria-label="使能通道效率总和曲线"></canvas>
+          </div>
+        </section>
+        <section class="ddr-chart-block" data-track="cpu">
+          <div class="ddr-meta" id="ddr-eff-meta-cpu">等待采样…</div>
+          <div class="ddr-chart-wrap">
+            <canvas id="ddr-eff-chart-cpu" aria-label="cpu_a55_main 内存带宽效率曲线"></canvas>
+          </div>
+        </section>
+        <section class="ddr-chart-block" data-track="gpu">
+          <div class="ddr-meta ddr-meta-gpu" id="ddr-eff-meta-gpu">gpu · —</div>
+          <div class="ddr-chart-wrap">
+            <canvas id="ddr-eff-chart-gpu" aria-label="gpu 内存带宽效率曲线"></canvas>
+          </div>
+        </section>
+        <section class="ddr-chart-block" data-track="vpu">
+          <div class="ddr-meta ddr-meta-vpu" id="ddr-eff-meta-vpu">vpu · —</div>
+          <div class="ddr-chart-wrap">
+            <canvas id="ddr-eff-chart-vpu" aria-label="vpu 内存带宽效率曲线"></canvas>
+          </div>
+        </section>
+        <section class="ddr-chart-block" data-track="audio" hidden>
+          <div class="ddr-meta ddr-meta-audio" id="ddr-eff-meta-audio">audio · —</div>
+          <div class="ddr-chart-wrap">
+            <canvas id="ddr-eff-chart-audio" aria-label="audio 内存带宽效率曲线"></canvas>
+          </div>
+        </section>
+        <section class="ddr-chart-block" data-track="vdec" hidden>
+          <div class="ddr-meta ddr-meta-vdec" id="ddr-eff-meta-vdec">vdec_4k · —</div>
+          <div class="ddr-chart-wrap">
+            <canvas id="ddr-eff-chart-vdec" aria-label="vdec_4k 内存带宽效率曲线"></canvas>
+          </div>
+        </section>
+        <section class="ddr-chart-block" data-track="vdec2k" hidden>
+          <div class="ddr-meta ddr-meta-vdec2k" id="ddr-eff-meta-vdec2k">vdec_2k_jpeg · —</div>
+          <div class="ddr-chart-wrap">
+            <canvas id="ddr-eff-chart-vdec2k" aria-label="vdec_2k_jpeg 内存带宽效率曲线"></canvas>
+          </div>
+        </section>
+        <section class="ddr-chart-block" data-track="emmc" hidden>
+          <div class="ddr-meta ddr-meta-emmc" id="ddr-eff-meta-emmc">emmc_sd · —</div>
+          <div class="ddr-chart-wrap">
+            <canvas id="ddr-eff-chart-emmc" aria-label="emmc_sd 内存带宽效率曲线"></canvas>
+          </div>
+        </section>
+        <section class="ddr-chart-block" data-track="usbpcie" hidden>
+          <div class="ddr-meta ddr-meta-usbpcie" id="ddr-eff-meta-usbpcie">usb_pcie · —</div>
+          <div class="ddr-chart-wrap">
+            <canvas id="ddr-eff-chart-usbpcie" aria-label="usb_pcie 内存带宽效率曲线"></canvas>
+          </div>
+        </section>
+        <section class="ddr-chart-block" data-track="phyeth" hidden>
+          <div class="ddr-meta ddr-meta-phyeth" id="ddr-eff-meta-phyeth">phy_eth_dac · —</div>
+          <div class="ddr-chart-wrap">
+            <canvas id="ddr-eff-chart-phyeth" aria-label="phy_eth_dac 内存带宽效率曲线"></canvas>
+          </div>
+        </section>
+      </div>
+      <p class="ddr-status" id="ddr-eff-status">等待操作</p>
+    </div>
+  </template>
+
   <template id="tpl-hwc">
     <div class="hwc">
       <div class="hwc-meta" id="hwc-meta">等待采样…</div>
@@ -316,6 +397,7 @@
   <script src="{{ url_for('static', filename='js/adb-text.js') }}"></script>
   <script src="{{ url_for('static', filename='js/hdmi.js') }}"></script>
   <script src="{{ url_for('static', filename='js/ddr.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/ddr-eff.js') }}"></script>
   <script src="{{ url_for('static', filename='js/hwc.js') }}"></script>
   <script src="{{ url_for('static', filename='js/hwc-status.js') }}"></script>
   <script src="{{ url_for('static', filename='js/sf-events.js') }}"></script>

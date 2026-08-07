@@ -36,13 +36,24 @@ const PANEL_DEFS = {
   },
   ddr: {
     id: "ddr",
-    title: "内存带宽",
+    title: "内存带宽 - 吞吐量",
     w: 9,
     h: 16,
     minW: 4,
     minH: 10,
     x: 3,
     y: 14,
+  },
+  "ddr-eff": {
+    id: "ddr-eff",
+    title: "内存带宽 - 效率",
+    w: 9,
+    h: 16,
+    minW: 4,
+    minH: 10,
+    x: 3,
+    y: 14,
+    defaultOpen: false,
   },
   hwc: {
     id: "hwc",
@@ -573,6 +584,17 @@ const Dashboard = (() => {
       clearBtn.title = "清空曲线";
       clearBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
       actions?.insertBefore(clearBtn, actions.firstChild);
+    } else if (panelId === "ddr-eff") {
+      body.appendChild(cloneTemplate("tpl-ddr-eff"));
+      const actions = panel.querySelector(".panel-actions");
+      const clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.id = "ddr-eff-clear";
+      clearBtn.className = "panel-header-btn";
+      clearBtn.textContent = "清空曲线";
+      clearBtn.title = "清空曲线";
+      clearBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+      actions?.insertBefore(clearBtn, actions.firstChild);
     } else if (panelId === "hwc") {
       body.appendChild(cloneTemplate("tpl-hwc"));
     } else if (panelId === "hwc-status") {
@@ -681,6 +703,7 @@ const Dashboard = (() => {
     if (panelId === "adb-text" && window.AdbTextPanel) window.AdbTextPanel.mount(panelEl);
     if (panelId === "hdmi" && window.HdmiPanel) window.HdmiPanel.mount(panelEl);
     if (panelId === "ddr" && window.DdrPanel) window.DdrPanel.mount(panelEl);
+    if (panelId === "ddr-eff" && window.DdrEffPanel) window.DdrEffPanel.mount(panelEl);
     if (panelId === "hwc" && window.HwcPanel) window.HwcPanel.mount(panelEl);
     if (panelId === "hwc-status" && window.HwcStatusPanel) {
       window.HwcStatusPanel.mount(panelEl);
@@ -716,6 +739,9 @@ const Dashboard = (() => {
     }
     if (panelId === "ddr" && window.DdrPanel?.unmount) {
       window.DdrPanel.unmount();
+    }
+    if (panelId === "ddr-eff" && window.DdrEffPanel?.unmount) {
+      window.DdrEffPanel.unmount();
     }
     if (panelId === "hwc" && window.HwcPanel?.unmount) {
       window.HwcPanel.unmount();

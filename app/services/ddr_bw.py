@@ -238,13 +238,22 @@ def parse_all_unique_clients(text: str) -> dict[str, Any]:
 
 
 def sum_clients(clients: dict[str, Any]) -> dict[str, int]:
-    """Sum RD/WR/Total across unique clients."""
-    rd = wr = total = 0
+    """Sum RD/WR/Total (and transaction counts) across unique clients."""
+    rd = wr = total = rd_trans = wr_trans = 0
     for row in clients.values():
         rd += int(row.get("rd_bps") or 0)
         wr += int(row.get("wr_bps") or 0)
         total += int(row.get("total_bps") or 0)
-    return {"rd_bps": rd, "wr_bps": wr, "total_bps": total, "name": "total"}
+        rd_trans += int(row.get("rd_trans") or 0)
+        wr_trans += int(row.get("wr_trans") or 0)
+    return {
+        "rd_bps": rd,
+        "wr_bps": wr,
+        "total_bps": total,
+        "rd_trans": rd_trans,
+        "wr_trans": wr_trans,
+        "name": "total",
+    }
 
 
 def sample(
