@@ -11,7 +11,7 @@
 - **内存带宽 - 吞吐量面板**：经 ADB 读取 DDR monitor（含全表去重后的 `total` 汇总与各 client 曲线）；可用按钮开关各曲线图（默认显示 total / cpu / gpu / vpu）
 - **内存带宽 - 效率面板**：同源 `status_raw`；曲线为 `RD BW / RD Trans`、`WR BW / WR Trans`（Trans 为 0 时记 0；单位 B/trans）；布局同吞吐量面板（默认关闭）
 - **SurfaceFlinger - hwclayers 面板**：经 ADB `dumpsys SurfaceFlinger --hwclayers` 按秒刷新；用层 frame 以爆炸轴测图展示（绕 Z 共逆时针 270°；按表格顺序向上拉开；DEVICE 实线 / CLIENT 虚线），并在下方列出图例
-- **IComposer - VPU 面板**：经 ADB `dumpsys android.hardware.graphics.composer3.IComposer/default` 读取 NationalChip HWC 表；用 VPU View 以爆炸轴测图叠画各层位置，并按 Z 从大到小列出明细
+- **IComposer - VPU 面板**：经 ADB `dumpsys android.hardware.graphics.composer3.IComposer/default` 读取 NationalChip HWC 表；用 **VPU View (x y w h)**（第 3/4 列为宽高）以爆炸轴测图叠画各层位置，并按 Z 从大到小列出明细
 - **SurfaceFlinger - events 面板**：经 ADB `dumpsys SurfaceFlinger --events` 按秒采样 `mWorkDuration` / `mReadyDuration` / `last vsync time` 并绘制曲线
 - **SurfaceFlinger - frametimeline 面板**：经 ADB `dumpsys SurfaceFlinger --frametimeline -all`；打开面板后自动按秒刷新；纵轴帧序号、横轴 0–⌈末帧 Expected Present⌉₀₀ ms，绘制 Expected/Actual 的 Start→Present 区间（Jank 红色），点选查看 Layer 明细
 - **proc - meminfo 面板**：经 ADB 读取 `/proc/meminfo`，按秒采样；层叠曲线展示 Swap 已用 / Cached+Buffers / AnonPages，并叠加 MemUsed 曲线（默认关闭）
@@ -100,7 +100,7 @@ http://<工作站IP>:5000
 7. **内存带宽 - 吞吐量**：打开面板后自动执行 `adb root`、挂载 debugfs、启用 DDR monitor，并每秒采样各 client 绘制曲线（默认显示 `cpu_a55_main` / `gpu` / `vpu`）
 8. **内存带宽 - 效率**：默认关闭；同源 DDR monitor，绘制各 client 的 `RD BW/RD Trans` 与 `WR BW/WR Trans`（B/trans）
 9. **SurfaceFlinger - hwclayers**：打开面板后每秒读取 SurfaceFlinger HWC layers，按表格顺序向上拉开绘制爆炸轴测图（CLIENT 虚线），并在下方列出图例
-10. **IComposer - VPU**：打开面板后每秒读取 composer dumpsys 中的 NationalChip HWC 表；用 VPU View 爆炸轴测图展示屏幕位置，并按 Z 从大到小列出各层
+10. **IComposer - VPU**：打开面板后每秒读取 composer dumpsys 中的 NationalChip HWC 表；用 VPU View (x y w h) 爆炸轴测图展示屏幕位置，并按 Z 从大到小列出各层
 11. **SurfaceFlinger - events**：打开面板后每秒读取 SurfaceFlinger events，绘制 work / ready / last vsync 时序曲线
 12. **SurfaceFlinger - frametimeline**：打开面板后自动按秒刷新；纵轴帧序号、横轴 0–⌈末帧 Expected Present⌉₀₀ ms，并排绘制 Expected/Actual 的 Start→Present；点击某一帧查看 Layer 明细
 13. **proc - meminfo**：默认关闭；打开后按秒读取 `/proc/meminfo`，层叠绘制 Swap 已用 / Cached+Buffers / AnonPages，并叠加 MemUsed 曲线

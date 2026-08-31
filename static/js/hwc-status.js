@@ -147,6 +147,7 @@ window.HwcStatusPanel = (() => {
     ];
   }
 
+  /** Prefer VPU View (x y w h); 3rd/4th are width/height, not right/bottom. */
   function viewOf(layer) {
     const v = layer?.vpu_view;
     if (v && (v.width > 0 || v.height > 0)) return v;
