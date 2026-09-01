@@ -5,6 +5,8 @@ window.HdmiDelayRecord = (() => {
   const listeners = new Set();
 
   let video = null;
+  let capVideo = null;
+  let capTrack = null;
   let recording = false;
   let frames = [];
   let clip = null;
@@ -16,6 +18,58 @@ window.HdmiDelayRecord = (() => {
   let lastNotifyAt = 0;
   let captureWidth = 0;
   let captureHeight = 0;
+
+  function captureSource() {
+    return capVideo || video;
+  }
+
+  function stopCaptureClone() {
+    if (capVideo && rvfcId != null && typeof capVideo.cancelVideoFrameCallback === "function") {
+      try {
+        capVideo.cancelVideoFrameCallback(rvfcId);
+      } catch {
+        /* ignore */
+      }
+      rvfcId = null;
+    }
+    if (capTrack) {
+      try {
+        capTrack.stop();
+      } catch {
+        /* ignore */
+      }
+      capTrack = null;
+    }
+    if (capVideo) {
+      try {
+        capVideo.pause();
+      } catch {
+        /* ignore */
+      }
+      capVideo.srcObject = null;
+      capVideo = null;
+    }
+  }
+
+  function startCaptureClone() {
+    stopCaptureClone();
+    if (!(video?.srcObject instanceof MediaStream)) return;
+    const srcTrack = video.srcObject.getVideoTracks()[0];
+    if (!srcTrack) return;
+    try {
+      capTrack = srcTrack.clone();
+      capVideo = document.createElement("video");
+      capVideo.muted = true;
+      capVideo.defaultMuted = true;
+      capVideo.playsInline = true;
+      capVideo.setAttribute("muted", "");
+      capVideo.srcObject = new MediaStream([capTrack]);
+      capVideo.play().catch((err) => console.warn("hdmi-delay clone play", err));
+    } catch (err) {
+      console.warn("hdmi-delay clone", err);
+      stopCaptureClone();
+    }
+  }
 
   function nowMs() {
     return performance.now();
@@ -122,9 +176,10 @@ window.HdmiDelayRecord = (() => {
   }
 
   function cancelSchedule() {
-    if (video && rvfcId != null && typeof video.cancelVideoFrameCallback === "function") {
+    const src = captureSource();
+    if (src && rvfcId != null && typeof src.cancelVideoFrameCallback === "function") {
       try {
-        video.cancelVideoFrameCallback(rvfcId);
+        src.cancelVideoFrameCallback(rvfcId);
       } catch {
         /* ignore */
       }
@@ -137,12 +192,13 @@ window.HdmiDelayRecord = (() => {
   }
 
   function canCapture() {
-    if (!recording || !video) return false;
+    const src = captureSource();
+    if (!recording || !src) return false;
     if (window.Dashboard?.isPaused?.()) return false;
-    if (video.paused || video.ended) return false;
-    if (!video.srcObject) return false;
-    if (!video.videoWidth || !video.videoHeight) return false;
-    if (video.readyState < 2) return false;
+    if (src.paused || src.ended) return false;
+    if (!src.srcObject) return false;
+    if (!src.videoWidth || !src.videoHeight) return false;
+    if (src.readyState < 2) return false;
     return true;
   }
 
@@ -156,18 +212,19 @@ window.HdmiDelayRecord = (() => {
   }
 
   async function captureFrame(t) {
+    const src = captureSource();
     if (encoding || !canCapture()) return;
     encoding = true;
     try {
-      const srcW = video.videoWidth;
-      const srcH = video.videoHeight;
+      const srcW = src.videoWidth;
+      const srcH = src.videoHeight;
       const maxW = 1920;
       const scale = srcW > maxW ? maxW / srcW : 1;
       const w = Math.max(1, Math.round(srcW * scale));
       const h = Math.max(1, Math.round(srcH * scale));
       let bmp;
       try {
-        bmp = await createImageBitmap(video);
+        bmp = await createImageBitmap(src);
       } catch (err) {
         console.warn("hdmi-delay bitmap", err);
         return;
@@ -208,9 +265,10 @@ window.HdmiDelayRecord = (() => {
   }
 
   function scheduleNext() {
-    if (!recording || !video) return;
-    if (typeof video.requestVideoFrameCallback === "function") {
-      rvfcId = video.requestVideoFrameCallback(onVideoFrame);
+    const src = captureSource();
+    if (!recording || !src) return;
+    if (typeof src.requestVideoFrameCallback === "function") {
+      rvfcId = src.requestVideoFrameCallback(onVideoFrame);
       return;
     }
     rafId = requestAnimationFrame(onRaf);
@@ -223,6 +281,7 @@ window.HdmiDelayRecord = (() => {
 
   function detach() {
     if (recording) stop({ openPanel: true });
+    stopCaptureClone();
     video = null;
     notify("detach");
   }
@@ -236,6 +295,7 @@ window.HdmiDelayRecord = (() => {
     clearLiveFrames();
     recording = true;
     lastNotifyAt = 0;
+    startCaptureClone();
     notify("start");
     scheduleNext();
     return { ok: true };
@@ -245,6 +305,7 @@ window.HdmiDelayRecord = (() => {
     if (!recording) return { ok: true, clip };
     recording = false;
     cancelSchedule();
+    stopCaptureClone();
     freezeClip();
     notify("stop");
     const openPanel = opts.openPanel !== false && clip && clip.frames.length;

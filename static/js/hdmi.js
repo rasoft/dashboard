@@ -16,6 +16,7 @@ window.HdmiPanel = (() => {
   let pauseUnsub = null;
   let delayUnsub = null;
   let mediaPausedByDashboard = false;
+  let audioUnlocked = false;
 
   const KEYBOARD_MAP = {
     ArrowUp: "DPAD_UP",
@@ -391,6 +392,19 @@ window.HdmiPanel = (() => {
 
   async function playMuted(video) {
     if (!video) return false;
+    if (audioUnlocked) {
+      video.muted = false;
+      video.defaultMuted = false;
+      video.removeAttribute("muted");
+      video.volume = 1;
+      try {
+        await video.play();
+        return !video.paused && !video.muted;
+      } catch (err) {
+        console.warn("unmuted play failed", err);
+        return false;
+      }
+    }
     video.muted = true;
     video.defaultMuted = true;
     video.setAttribute("muted", "");
@@ -413,14 +427,20 @@ window.HdmiPanel = (() => {
       await playMuted(video);
     }
 
-    const prevMuted = video.muted;
     video.muted = false;
     video.defaultMuted = false;
     video.removeAttribute("muted");
     video.volume = 1;
+    const stream = video.srcObject;
+    if (stream instanceof MediaStream) {
+      stream.getAudioTracks().forEach((t) => {
+        t.enabled = true;
+      });
+    }
     try {
       await video.play();
       if (!video.muted && !video.paused) {
+        audioUnlocked = true;
         if (unmute) unmute.hidden = true;
         return true;
       }
@@ -428,14 +448,25 @@ window.HdmiPanel = (() => {
       console.warn("unmute/play", err);
     }
 
+    if (audioUnlocked) {
+      video.muted = false;
+      video.defaultMuted = false;
+      video.removeAttribute("muted");
+      if (video.paused) {
+        try {
+          await video.play();
+        } catch {
+          /* ignore */
+        }
+      }
+      return !video.muted && !video.paused;
+    }
+
     // Restore muted autoplay so the picture keeps running.
     video.muted = true;
     video.defaultMuted = true;
     video.setAttribute("muted", "");
     if (video.paused) await playMuted(video);
-    else if (!prevMuted) {
-      /* stay muted while playing */
-    }
 
     if (showButtonOnFail && unmute && !video.paused) unmute.hidden = false;
     return false;
@@ -480,7 +511,6 @@ window.HdmiPanel = (() => {
       });
     };
     window.addEventListener("pointerdown", unmuteGestureHandler, true);
-    window.addEventListener("keydown", unmuteGestureHandler, true);
     window.addEventListener("touchstart", unmuteGestureHandler, true);
   }
 
@@ -623,6 +653,7 @@ window.HdmiPanel = (() => {
     }
     const { video, unmute } = els();
     if (unmute) unmute.hidden = true;
+    audioUnlocked = false;
     if (video) {
       try {
         video.pause();
@@ -688,6 +719,9 @@ window.HdmiPanel = (() => {
         video.srcObject = new MediaStream();
       }
       video.srcObject.addTrack(ev.track);
+      if (ev.track.kind === "audio") {
+        ev.track.enabled = true;
+      }
 
       if (window.Dashboard?.isPaused?.()) {
         mediaPausedByDashboard = true;
@@ -703,29 +737,30 @@ window.HdmiPanel = (() => {
         return;
       }
 
-      // Always start muted so autoplay works on page reload without a gesture.
-      playMuted(video).then((playing) => {
-        if (playing) {
-          setOverlay("", false);
-        }
-        if (enableAudio) {
-          startUnmuteAssist();
-          // One immediate unmute attempt; if blocked, muted video already plays.
-          tryUnmute(false);
-        } else {
-          stopUnmuteAssist();
-          const { unmute } = els();
-          if (unmute) unmute.hidden = true;
-        }
-      });
-
+      // Video track starts muted autoplay. Audio track must not call playMuted
+      // again — that would re-mute after a successful unmute.
       if (ev.track.kind === "video") {
+        playMuted(video).then((playing) => {
+          if (playing) {
+            setOverlay("", false);
+          }
+          if (enableAudio) {
+            startUnmuteAssist();
+            tryUnmute(false);
+          } else {
+            stopUnmuteAssist();
+            const { unmute } = els();
+            if (unmute) unmute.hidden = true;
+          }
+        });
         setOverlay("", false);
         setStatus(enableAudio ? "画面已连接（尝试开启声音）" : "画面已连接");
         startStatsMonitor();
+        return;
       }
-      if (ev.track.kind === "audio") {
-        if (enableAudio) tryUnmute(false);
+
+      if (ev.track.kind === "audio" && enableAudio) {
+        tryUnmute(false);
       }
     };
 
@@ -810,14 +845,25 @@ window.HdmiPanel = (() => {
       audio.addEventListener("change", () => {
         if (!pc) refreshEstimateBandwidth();
       });
-      toggle.addEventListener("click", () => onToggleClick());
-      delayToggle?.addEventListener("click", () => onDelayRecClick());
+      toggle.addEventListener("click", () => {
+        if (els().audio?.checked) tryUnmute(true);
+        onToggleClick();
+      });
+      delayToggle?.addEventListener("click", () => {
+        tryUnmute(true);
+        onDelayRecClick();
+      });
+      root.querySelector(".hdmi-stage")?.addEventListener("click", () => {
+        if (els().audio?.checked) tryUnmute(true);
+      });
       if (unmute) {
         unmute.addEventListener("click", () => {
-          tryUnmute(false).then((ok) => {
+          tryUnmute(true).then((ok) => {
             if (ok) {
               stopUnmuteAssist();
               setStatus("已取消静音");
+            } else {
+              setStatus("浏览器拦截了声音，请再点一次画面或「取消静音」");
             }
           });
         });

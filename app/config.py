@@ -13,7 +13,7 @@ class Config:
     ADB_PATH = os.environ.get("ADB_PATH", "adb")
     ADB_SERIAL = os.environ.get("ADB_SERIAL", "")
 
-    CAPTURE_NAME_FILTERS = ("MACROSILICON", "USB3 Video", "USB Video")
+    CAPTURE_NAME_FILTERS = ("MACROSILICON", "USB3 Video", "USB2 Video", "USB Video")
     DEFAULT_WIDTH = 1920
     DEFAULT_HEIGHT = 1080
     DEFAULT_FPS = 30

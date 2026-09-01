@@ -97,6 +97,33 @@ def list_video_devices() -> list[dict[str, Any]]:
     return matched or devices
 
 
+def _is_onboard_audio(name: str) -> bool:
+    upper = name.upper()
+    return any(mark in upper for mark in ("HDA INTEL", "PCH", "ALC", "REALTEK"))
+
+
+def _looks_like_hdmi_audio(label: str, card_name: str, filters: tuple[str, ...]) -> bool:
+    blob = f"{label} {card_name}"
+    if _name_matches(blob, filters):
+        return True
+    upper = blob.upper()
+    if _is_onboard_audio(upper):
+        return False
+    # USB capture dongles often show as "USB2 Video USB Audio".
+    return "USB" in upper and "VIDEO" in upper
+
+
+def _audio_priority(dev: dict[str, Any]) -> tuple[int, int, int]:
+    name = (dev.get("name") or "").upper()
+    card = int(dev.get("card") or 99)
+    device = int(dev.get("device") or 99)
+    if dev.get("matched") or ("USB" in name and "VIDEO" in name):
+        return (0, card, device)
+    if "USB" in name and not _is_onboard_audio(name):
+        return (1, card, device)
+    return (2, card, device)
+
+
 def list_alsa_capture() -> list[dict[str, Any]]:
     filters = tuple(current_app.config.get("CAPTURE_NAME_FILTERS", ()))
     devices: list[dict[str, Any]] = []
@@ -122,10 +149,7 @@ def list_alsa_capture() -> list[dict[str, Any]]:
         label = f"{card_name.strip()} {dev_name.strip()}"
         alsa = f"hw:{card},{device}"
         plughw = f"plughw:{card},{device}"
-        matched = _name_matches(label, filters) or _name_matches(card_name, filters)
-        # HDMI capture cards often show as USB Audio near MACROSILICON
-        if not matched and ("USB" in label.upper() or "AUDIO" in label.upper()):
-            matched = True if not filters else matched
+        matched = _looks_like_hdmi_audio(label, card_name, filters)
         devices.append(
             {
                 "name": label.strip(),
@@ -137,15 +161,16 @@ def list_alsa_capture() -> list[dict[str, Any]]:
             }
         )
 
+    devices.sort(key=_audio_priority)
     matched = [d for d in devices if d["matched"]]
-    # Prefer matched; if none matched specifically, return all USB-like
     return matched or devices
 
 
 def get_capture_status() -> dict[str, Any]:
     videos = list_video_devices()
     audios = list_alsa_capture()
-    primary_video = videos[0] if videos else None
+    matched_videos = [d for d in videos if d.get("matched")]
+    primary_video = (matched_videos or videos)[0] if videos else None
     primary_audio = audios[0] if audios else None
     return {
         "available": primary_video is not None,
