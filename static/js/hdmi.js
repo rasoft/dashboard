@@ -14,6 +14,7 @@ window.HdmiPanel = (() => {
   let keyHandler = null;
   let keySending = false;
   let pauseUnsub = null;
+  let delayUnsub = null;
   let mediaPausedByDashboard = false;
 
   const KEYBOARD_MAP = {
@@ -60,10 +61,14 @@ window.HdmiPanel = (() => {
       resolution: root.querySelector("#hdmi-resolution"),
       audio: root.querySelector("#hdmi-audio"),
       toggle: root.querySelector("#hdmi-toggle"),
+      delayToggle: root.querySelector("#hdmi-delay-rec"),
+      delayMeta: root.querySelector("#hdmi-delay-rec-meta"),
       unmute: root.querySelector("#hdmi-unmute"),
       bandwidth: root.querySelector("#hdmi-bandwidth"),
       video: root.querySelector("#hdmi-video"),
       overlay: root.querySelector("#hdmi-overlay"),
+      recBadge: root.querySelector("#hdmi-rec-badge"),
+      recBadgeText: root.querySelector("#hdmi-rec-badge-text"),
       status: root.querySelector("#hdmi-status"),
       keyFeedback: root.querySelector("#hdmi-key-feedback"),
     };
@@ -154,6 +159,50 @@ window.HdmiPanel = (() => {
     overlay.classList.toggle("hidden", !show);
   }
 
+  function formatDelaySec(ms) {
+    return `${(Math.max(0, ms) / 1000).toFixed(1)}s`;
+  }
+
+  function syncDelayUi(state) {
+    if (!root) return;
+    const rec = state || window.HdmiDelayRecord?.getState?.() || {};
+    const { delayToggle, delayMeta, recBadge, recBadgeText, toggle } = els();
+    const running = toggle?.dataset.running === "1";
+    if (delayToggle) {
+      delayToggle.disabled = !rec.recording && !running;
+      delayToggle.dataset.recording = rec.recording ? "1" : "0";
+      delayToggle.textContent = rec.recording ? "停止录制" : "延时录制";
+      delayToggle.classList.toggle("btn-ghost", !rec.recording);
+    }
+    if (delayMeta) {
+      if (rec.recording) {
+        delayMeta.textContent = `${formatDelaySec(rec.bufferMs)} / 30.0s · ${rec.frameCount} 帧`;
+      } else if (rec.hasClip) {
+        delayMeta.textContent = `已保存 ${rec.frameCount} 帧 · ${formatDelaySec(rec.bufferMs)}`;
+      } else {
+        delayMeta.textContent = running ? "未录制" : "先开始采集";
+      }
+    }
+    if (recBadge) recBadge.hidden = !rec.recording;
+    if (recBadgeText) recBadgeText.textContent = `REC ${formatDelaySec(rec.bufferMs)}`;
+  }
+
+  function onDelayRecClick() {
+    const rec = window.HdmiDelayRecord;
+    if (!rec) return;
+    if (rec.isRecording()) {
+      rec.stop();
+      setStatus("已停止延时录制，可在录制回放面板查看");
+      return;
+    }
+    const result = rec.start();
+    if (!result.ok) {
+      setStatus(result.error || "无法开始录制");
+      return;
+    }
+    setStatus("延时录制中（保留最近 30 秒）");
+  }
+
   function setButtons({ running }) {
     const { toggle } = els();
     if (!toggle) return;
@@ -161,6 +210,7 @@ window.HdmiPanel = (() => {
     toggle.textContent = running ? "停止" : "开始";
     toggle.classList.toggle("btn-ghost", !!running);
     toggle.disabled = false;
+    syncDelayUi();
   }
 
   async function onToggleClick() {
@@ -551,6 +601,9 @@ window.HdmiPanel = (() => {
   }
 
   function cleanupPc() {
+    if (window.HdmiDelayRecord?.isRecording()) {
+      window.HdmiDelayRecord.stop();
+    }
     stopStatsMonitor();
     stopUnmuteAssist();
     remoteDescriptionSet = false;
@@ -734,12 +787,13 @@ window.HdmiPanel = (() => {
 
   async function stop() {
     starting = false;
+    const wasRec = !!window.HdmiDelayRecord?.isRecording?.();
     const sock = ensureSocket();
     if (sock.connected) sock.emit("hdmi:stop", {});
     cleanupPc();
     setButtons({ running: false });
     setOverlay("已停止", true);
-    setStatus("已停止监测");
+    setStatus(wasRec ? "已停止监测；延时录制已保存，可回放" : "已停止监测");
     await refreshEstimateBandwidth();
   }
 
@@ -749,7 +803,7 @@ window.HdmiPanel = (() => {
 
     if (root.dataset.bound !== "1") {
       root.dataset.bound = "1";
-      const { resolution, audio, toggle, unmute } = els();
+      const { resolution, audio, toggle, unmute, delayToggle } = els();
       resolution.addEventListener("change", () => {
         if (!pc) refreshEstimateBandwidth();
       });
@@ -757,6 +811,7 @@ window.HdmiPanel = (() => {
         if (!pc) refreshEstimateBandwidth();
       });
       toggle.addEventListener("click", () => onToggleClick());
+      delayToggle?.addEventListener("click", () => onDelayRecClick());
       if (unmute) {
         unmute.addEventListener("click", () => {
           tryUnmute(false).then((ok) => {
@@ -766,6 +821,13 @@ window.HdmiPanel = (() => {
             }
           });
         });
+      }
+    }
+
+    if (window.HdmiDelayRecord) {
+      window.HdmiDelayRecord.attach(els().video);
+      if (!delayUnsub) {
+        delayUnsub = window.HdmiDelayRecord.subscribe((state) => syncDelayUi(state));
       }
     }
 
@@ -788,6 +850,11 @@ window.HdmiPanel = (() => {
       pauseUnsub();
       pauseUnsub = null;
     }
+    if (delayUnsub) {
+      delayUnsub();
+      delayUnsub = null;
+    }
+    if (window.HdmiDelayRecord) window.HdmiDelayRecord.detach();
     mediaPausedByDashboard = false;
     starting = false;
     try {

@@ -7,7 +7,8 @@
 - **可拖拽面板框架**：关闭、移动、缩放，允许面板重叠；工作区高度固定，面板可部分拖出但不可全部拖出；每个面板会记住最后一次的大小与位置（含关闭后再打开）
 - **遥控器面板**：点击虚拟按键经 ADB 发送（默认关闭）
 - **输入面板**：文本框经 ADB `input text` 发送字符串到设备（默认关闭）
-- **操作台面板**：经 MACROSILICON USB3 Video 采集，WebRTC 推送到浏览器（一路采集、多浏览器订阅）；打开后可用键盘发送方向键 / 确认 / 返回 / 音量到 ADB
+- **操作台面板**：经 MACROSILICON USB3 Video 采集，WebRTC 推送到浏览器（一路采集、多浏览器订阅）；打开后可用键盘发送方向键 / 确认 / 返回 / 音量到 ADB；可对当前画面做最长 30 秒的延时录制
+- **录制回放面板**：回放操作台刚录下的最近 30 秒 HDMI 画面（超出部分丢弃）；支持播放 / 暂停 / 上一帧 / 下一帧，可拖动进度条按时间快速定位，并可保存为 MP4 到本地（默认关闭）
 - **内存带宽 - 吞吐量面板**：经 ADB 读取 DDR monitor（含全表去重后的 `total` 汇总与各 client 曲线）；可用按钮开关各曲线图（默认显示 total / cpu / gpu / vpu）
 - **内存带宽 - 效率面板**：同源 `status_raw`；曲线为 `RD BW / RD Trans`、`WR BW / WR Trans`（Trans 为 0 时记 0；单位 B/trans）；布局同吞吐量面板（默认关闭）
 - **SurfaceFlinger - hwclayers 面板**：经 ADB `dumpsys SurfaceFlinger --hwclayers` 按秒刷新；用层 frame 以爆炸轴测图展示（绕 Z 共逆时针 270°；按表格顺序向上拉开；DEVICE 实线 / CLIENT 虚线），并在下方列出图例
@@ -18,6 +19,7 @@
 - **proc - diskstats 面板**：经 ADB 读取 `/proc/diskstats`；打开时用 `df` 自动映射 `/` `/metadata` `/system_ext` `/vendor` `/product` `/cache` `/data` 到块设备，并与 mmcblk0 / zram0 一起分图绘制读写吞吐（布局同内存带宽；默认关闭）
 - 开始监测后按秒刷新实时网络带宽（WebRTC 收流统计）；未开播时显示预估
 - 打开操作台面板后自动开始播放，并启用键盘 ADB 按键发送
+- 操作台在采集中可点「延时录制」：环形缓冲最近 30 秒，停止后自动打开录制回放面板
 - 顶栏「暂停 / 继续」可冻结各面板数据刷新与操作台 WebRTC 播放；继续时丢弃暂停期间积压的视频帧
 - 遥控器面板默认不打开
 - 输入面板默认不打开
@@ -94,17 +96,18 @@ http://<工作站IP>:5000
 1. 用 USB 连接 Android 开发板，执行 `adb devices` 确认已授权
 2. 将开发板 HDMI 接到 MACROSILICON USB3 采集卡
 3. 打开 Dashboard，顶栏查看 ADB / HDMI 状态
-4. **操作台**：打开面板后默认以 1920×1080 自动开始监测；可用键盘发送方向键 / 确认 / 返回 / 音量到设备；可改分辨率或点「停止」后手动再开
-5. **遥控器**：默认关闭；打开后点击虚拟按键发送
-6. **输入**：默认关闭；打开后面板内输入文本，点「发送」或按 Enter，经 `adb shell input text` 发到设备
-7. **内存带宽 - 吞吐量**：打开面板后自动执行 `adb root`、挂载 debugfs、启用 DDR monitor，并每秒采样各 client 绘制曲线（默认显示 `cpu_a55_main` / `gpu` / `vpu`）
-8. **内存带宽 - 效率**：默认关闭；同源 DDR monitor，绘制各 client 的 `RD BW/RD Trans` 与 `WR BW/WR Trans`（B/trans）
-9. **SurfaceFlinger - hwclayers**：打开面板后每秒读取 SurfaceFlinger HWC layers，按表格顺序向上拉开绘制爆炸轴测图（CLIENT 虚线），并在下方列出图例
-10. **IComposer - VPU**：打开面板后每秒读取 composer dumpsys 中的 NationalChip HWC 表；用 VPU View (x y w h) 爆炸轴测图展示屏幕位置，并按 Z 从大到小列出各层
-11. **SurfaceFlinger - events**：打开面板后每秒读取 SurfaceFlinger events，绘制 work / ready / last vsync 时序曲线
-12. **SurfaceFlinger - frametimeline**：打开面板后自动按秒刷新；纵轴帧序号、横轴 0–⌈末帧 Expected Present⌉₀₀ ms，并排绘制 Expected/Actual 的 Start→Present；点击某一帧查看 Layer 明细
-13. **proc - meminfo**：默认关闭；打开后按秒读取 `/proc/meminfo`，层叠绘制 Swap 已用 / Cached+Buffers / AnonPages，并叠加 MemUsed 曲线
-14. **proc - diskstats**：默认关闭；打开后经 `df` 映射挂载点到块设备，分图绘制 mmcblk0 / zram0 与各挂载分区的 RD / WR / Total（MB/s）；默认打开 mmcblk0、zram0、`/`、`/data`
+4. **操作台**：打开面板后默认以 1920×1080 自动开始监测；可用键盘发送方向键 / 确认 / 返回 / 音量到设备；可改分辨率或点「停止」后手动再开；采集中可点「延时录制」保留最近 30 秒画面（更早的内容会被丢弃）
+5. **录制回放**：默认关闭；停止录制后会自动打开。可播放 / 暂停，按「上一帧」「下一帧」逐帧查看，或拖动进度条按时间快速定位；点「保存视频」将 MP4 存到本机文件夹
+6. **遥控器**：默认关闭；打开后点击虚拟按键发送
+7. **输入**：默认关闭；打开后面板内输入文本，点「发送」或按 Enter，经 `adb shell input text` 发到设备
+8. **内存带宽 - 吞吐量**：打开面板后自动执行 `adb root`、挂载 debugfs、启用 DDR monitor，并每秒采样各 client 绘制曲线（默认显示 `cpu_a55_main` / `gpu` / `vpu`）
+9. **内存带宽 - 效率**：默认关闭；同源 DDR monitor，绘制各 client 的 `RD BW/RD Trans` 与 `WR BW/WR Trans`（B/trans）
+10. **SurfaceFlinger - hwclayers**：打开面板后每秒读取 SurfaceFlinger HWC layers，按表格顺序向上拉开绘制爆炸轴测图（CLIENT 虚线），并在下方列出图例
+11. **IComposer - VPU**：打开面板后每秒读取 composer dumpsys 中的 NationalChip HWC 表；用 VPU View (x y w h) 爆炸轴测图展示屏幕位置，并按 Z 从大到小列出各层
+12. **SurfaceFlinger - events**：打开面板后每秒读取 SurfaceFlinger events，绘制 work / ready / last vsync 时序曲线
+13. **SurfaceFlinger - frametimeline**：打开面板后自动按秒刷新；纵轴帧序号、横轴 0–⌈末帧 Expected Present⌉₀₀ ms，并排绘制 Expected/Actual 的 Start→Present；点击某一帧查看 Layer 明细
+14. **proc - meminfo**：默认关闭；打开后按秒读取 `/proc/meminfo`，层叠绘制 Swap 已用 / Cached+Buffers / AnonPages，并叠加 MemUsed 曲线
+15. **proc - diskstats**：默认关闭；打开后经 `df` 映射挂载点到块设备，分图绘制 mmcblk0 / zram0 与各挂载分区的 RD / WR / Total（MB/s）；默认打开 mmcblk0、zram0、`/`、`/data`
 
 同一时间可多浏览器订阅同一路 HDMI 采集（一路采集、多路转发）。
 
@@ -116,6 +119,7 @@ http://<工作站IP>:5000
 - `GET /api/hdmi/devices`
 - `GET /api/hdmi/ice-servers` — 浏览器/服务端共用的 STUN/TURN 配置
 - `GET /api/hdmi/bandwidth?width=1920&height=1080&fps=30&audio=1`
+- `POST /api/hdmi/delay-export` — 将延时录制的 JPEG 帧序列编码为 MP4
 - `POST /api/ddr/enable` — 启用 DDR debugfs monitor
 - `GET /api/ddr/sample?targets=cpu_a55_main,gpu,vpu,vdec_4k,vdec_2k_jpeg,emmc_sd,usb_pcie,phy_eth_dac` — 读取一次内存带宽（含 `rd_trans` / `wr_trans`，供吞吐量与效率面板共用）
 - `GET /api/hwc/layers` — 读取 SurfaceFlinger HWC 图层
@@ -134,7 +138,7 @@ WebRTC 信令（Socket.IO）：`hdmi:offer` / `hdmi:answer` / `hdmi:ice` / `hdmi
 ```text
 app/
   routes/       # HTTP 页面与 REST API
-  services/     # adb、capture、bandwidth、webrtc、ddr_bw、hwc_layers、hwc_status、sf_events、sf_frametimeline、meminfo、diskstats
+  services/     # adb、capture、bandwidth、webrtc、ddr_bw、hwc_layers、hwc_status、sf_events、sf_frametimeline、meminfo、diskstats、delay_export
   signaling.py  # Socket.IO 信令
 static/         # CSS / JS
 templates/      # 单页 Dashboard
@@ -156,4 +160,4 @@ run.py
 
 - 串口终端面板（基于 `/dev/serial/by-id/...FTDI...`）
 - HTTPS / 简易鉴权
-- 多路并发 HDMI、截图与录像
+- 多路并发 HDMI、截图与导出录像

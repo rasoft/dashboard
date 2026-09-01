@@ -34,6 +34,17 @@ const PANEL_DEFS = {
     x: 3,
     y: 0,
   },
+  "hdmi-delay": {
+    id: "hdmi-delay",
+    title: "录制回放",
+    w: 9,
+    h: 14,
+    minW: 4,
+    minH: 7,
+    x: 12,
+    y: 0,
+    defaultOpen: false,
+  },
   ddr: {
     id: "ddr",
     title: "内存带宽 - 吞吐量",
@@ -573,6 +584,8 @@ const Dashboard = (() => {
       body.appendChild(cloneTemplate("tpl-adb-text"));
     } else if (panelId === "hdmi") {
       body.appendChild(cloneTemplate("tpl-hdmi"));
+    } else if (panelId === "hdmi-delay") {
+      body.appendChild(cloneTemplate("tpl-hdmi-delay"));
     } else if (panelId === "ddr") {
       body.appendChild(cloneTemplate("tpl-ddr"));
       const actions = panel.querySelector(".panel-actions");
@@ -702,6 +715,9 @@ const Dashboard = (() => {
     if (panelId === "remote" && window.RemotePanel) window.RemotePanel.mount(panelEl);
     if (panelId === "adb-text" && window.AdbTextPanel) window.AdbTextPanel.mount(panelEl);
     if (panelId === "hdmi" && window.HdmiPanel) window.HdmiPanel.mount(panelEl);
+    if (panelId === "hdmi-delay" && window.HdmiDelayPanel) {
+      window.HdmiDelayPanel.mount(panelEl);
+    }
     if (panelId === "ddr" && window.DdrPanel) window.DdrPanel.mount(panelEl);
     if (panelId === "ddr-eff" && window.DdrEffPanel) window.DdrEffPanel.mount(panelEl);
     if (panelId === "hwc" && window.HwcPanel) window.HwcPanel.mount(panelEl);
@@ -730,6 +746,9 @@ const Dashboard = (() => {
     if (panelId === "hdmi" && window.HdmiPanel) {
       if (window.HdmiPanel.unmount) window.HdmiPanel.unmount();
       else window.HdmiPanel.stop().catch(() => {});
+    }
+    if (panelId === "hdmi-delay" && window.HdmiDelayPanel?.unmount) {
+      window.HdmiDelayPanel.unmount();
     }
     if (panelId === "remote" && window.RemotePanel?.unmount) {
       window.RemotePanel.unmount();

@@ -554,6 +554,190 @@ body {
   color: var(--danger);
 }
 
+.hdmi-delay-rec-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+#hdmi-delay-rec[data-recording="1"] {
+  border-color: var(--danger);
+  color: #ffd4d4;
+  background: rgba(226, 92, 92, 0.18);
+}
+
+.hdmi-rec-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62);
+  border: 1px solid rgba(226, 92, 92, 0.45);
+  color: #ffd4d4;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.hdmi-rec-badge[hidden] {
+  display: none !important;
+}
+
+.hdmi-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(226, 92, 92, 0.25);
+  animation: hdmi-rec-blink 1s ease-in-out infinite;
+}
+
+@keyframes hdmi-rec-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.hdmi-delay {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  height: 100%;
+}
+
+.hdmi-delay-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.hdmi-delay-pos {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.hdmi-delay-seek-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.15rem 0;
+  flex-shrink: 0;
+}
+
+.hdmi-delay-seek-time {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 3.2rem;
+}
+
+.hdmi-delay-seek-time:last-child {
+  text-align: right;
+}
+
+.hdmi-delay-seek {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  appearance: none;
+  background: transparent;
+  touch-action: none;
+  --seek-pct: 0%;
+}
+
+.hdmi-delay-seek:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.hdmi-delay-seek::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--seek-pct),
+    #243140 var(--seek-pct)
+  );
+}
+
+.hdmi-delay-seek::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #e7eef6;
+  box-shadow: 0 0 0 3px rgba(61, 156, 240, 0.25);
+  cursor: grab;
+}
+
+.hdmi-delay-seek:active:not(:disabled)::-webkit-slider-thumb {
+  cursor: grabbing;
+}
+
+.hdmi-delay-seek::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #243140;
+}
+
+.hdmi-delay-seek::-moz-range-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.hdmi-delay-seek::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #e7eef6;
+  box-shadow: 0 0 0 3px rgba(61, 156, 240, 0.25);
+  cursor: grab;
+}
+
+.hdmi-delay-stage {
+  position: relative;
+  flex: 1;
+  min-height: 220px;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.hdmi-delay-stage canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  display: block;
+}
+
+.hdmi-delay-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 /* DDR memory bandwidth / diskstats multi-track charts */
 .ddr,
 .diskstats {

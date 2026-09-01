@@ -41,6 +41,7 @@
           <button type="button" data-panel="proc-meminfo">proc - meminfo</button>
           <button type="button" data-panel="proc-diskstats">proc - diskstats</button>
           <button type="button" data-panel="hdmi">操作台</button>
+          <button type="button" data-panel="hdmi-delay">录制回放</button>
           <button type="button" data-panel="adb-text">输入</button>
           <button type="button" data-panel="remote">遥控器</button>
         </div>
@@ -144,15 +145,54 @@
           音频
         </label>
         <button type="button" class="btn" id="hdmi-toggle" data-running="0">开始</button>
+        <button type="button" class="btn btn-ghost" id="hdmi-delay-rec" data-recording="0" disabled>延时录制</button>
+        <span class="hdmi-delay-rec-meta" id="hdmi-delay-rec-meta">先开始采集</span>
         <button type="button" class="btn btn-ghost" id="hdmi-unmute" hidden>取消静音</button>
       </div>
       <div class="hdmi-bandwidth" id="hdmi-bandwidth">网络带宽加载中…</div>
       <div class="hdmi-stage">
         <video id="hdmi-video" autoplay playsinline muted></video>
+        <div class="hdmi-rec-badge" id="hdmi-rec-badge" hidden>
+          <span class="hdmi-rec-dot"></span>
+          <span id="hdmi-rec-badge-text">REC 0.0s</span>
+        </div>
         <div class="hdmi-overlay" id="hdmi-overlay">未开始</div>
       </div>
       <p class="hdmi-status" id="hdmi-status">等待操作</p>
       <p class="hdmi-key-feedback" id="hdmi-key-feedback">键盘：方向/确认/返回/音量 · P电源 B列表 A助手 S设置 H主页 M静音</p>
+    </div>
+  </template>
+
+  <template id="tpl-hdmi-delay">
+    <div class="hdmi-delay">
+      <div class="hdmi-delay-controls">
+        <button type="button" class="btn" id="hdmi-delay-play" disabled>播放</button>
+        <button type="button" class="btn btn-ghost" id="hdmi-delay-pause" disabled>暂停</button>
+        <button type="button" class="btn btn-ghost" id="hdmi-delay-prev" disabled>上一帧</button>
+        <button type="button" class="btn btn-ghost" id="hdmi-delay-next" disabled>下一帧</button>
+        <button type="button" class="btn" id="hdmi-delay-save" disabled>保存视频</button>
+        <span class="hdmi-delay-pos" id="hdmi-delay-pos">尚未录制</span>
+      </div>
+      <div class="hdmi-delay-seek-row">
+        <span class="hdmi-delay-seek-time" id="hdmi-delay-seek-cur">0.00s</span>
+        <input
+          type="range"
+          class="hdmi-delay-seek"
+          id="hdmi-delay-seek"
+          min="0"
+          max="10000"
+          step="1"
+          value="0"
+          disabled
+          aria-label="拖动定位回放进度"
+        />
+        <span class="hdmi-delay-seek-time" id="hdmi-delay-seek-dur">0.00s</span>
+      </div>
+      <div class="hdmi-delay-stage">
+        <canvas id="hdmi-delay-canvas" aria-label="录制回放"></canvas>
+        <div class="hdmi-overlay" id="hdmi-delay-overlay">尚未录制</div>
+      </div>
+      <p class="hdmi-delay-status" id="hdmi-delay-status">在操作台开始 HDMI 采集后即可录制并回放</p>
     </div>
   </template>
 
@@ -396,6 +436,7 @@
   <script src="{{ url_for('static', filename='js/remote.js') }}"></script>
   <script src="{{ url_for('static', filename='js/adb-text.js') }}"></script>
   <script src="{{ url_for('static', filename='js/hdmi.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/hdmi-delay.js') }}"></script>
   <script src="{{ url_for('static', filename='js/ddr.js') }}"></script>
   <script src="{{ url_for('static', filename='js/ddr-eff.js') }}"></script>
   <script src="{{ url_for('static', filename='js/hwc.js') }}"></script>

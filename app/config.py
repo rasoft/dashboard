@@ -39,3 +39,6 @@ class Config:
     # limits which local IPs are rewritten (comma-separated); empty = all host candidates.
     WEBRTC_ANNOUNCE_IP = os.environ.get("WEBRTC_ANNOUNCE_IP", "").strip()
     WEBRTC_ANNOUNCE_REPLACE = _split_urls(os.environ.get("WEBRTC_ANNOUNCE_REPLACE", ""))
+
+    # Packed JPEG sequence from the delay-record panel (up to ~30s 1080p).
+    MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH", str(400 * 1024 * 1024)))

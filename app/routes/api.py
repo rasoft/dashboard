@@ -1,10 +1,13 @@
-from flask import Blueprint, current_app, jsonify, request
+import io
+
+from flask import Blueprint, current_app, jsonify, request, send_file
 
 from app.services import (
     adb,
     bandwidth,
     capture,
     ddr_bw,
+    delay_export,
     diskstats,
     hwc_layers,
     hwc_status,
@@ -96,6 +99,24 @@ def hdmi_bandwidth():
     estimate = bandwidth.estimate_bandwidth(width, height, fps, audio)
     estimate["ok"] = True
     return jsonify(estimate)
+
+
+@api_bp.post("/hdmi/delay-export")
+def hdmi_delay_export():
+    data = request.get_data(cache=False)
+    if not data:
+        return jsonify({"ok": False, "error": "没有录制数据"}), 400
+    video, err = delay_export.export_mp4(data)
+    if err or not video:
+        return jsonify({"ok": False, "error": err or "导出失败"}), 400
+    buf = io.BytesIO(video)
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype="video/mp4",
+        as_attachment=True,
+        download_name="hdmi-record.mp4",
+    )
 
 
 @api_bp.get("/serial/ports")
