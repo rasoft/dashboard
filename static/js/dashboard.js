@@ -88,6 +88,17 @@ const PANEL_DEFS = {
     y: 18,
     defaultOpen: false,
   },
+  "omx-vdec": {
+    id: "omx-vdec",
+    title: "OMX VDEC",
+    w: 7,
+    h: 14,
+    minW: 2,
+    minH: 4,
+    x: 6,
+    y: 18,
+    defaultOpen: false,
+  },
   "sf-events": {
     id: "sf-events",
     title: "SurfaceFlinger - events",
@@ -612,6 +623,8 @@ const Dashboard = (() => {
       body.appendChild(cloneTemplate("tpl-hwc"));
     } else if (panelId === "hwc-status") {
       body.appendChild(cloneTemplate("tpl-hwc-status"));
+    } else if (panelId === "omx-vdec") {
+      body.appendChild(cloneTemplate("tpl-omx-vdec"));
     } else if (panelId === "sf-events") {
       body.appendChild(cloneTemplate("tpl-sf-events"));
       const actions = panel.querySelector(".panel-actions");
@@ -724,6 +737,9 @@ const Dashboard = (() => {
     if (panelId === "hwc-status" && window.HwcStatusPanel) {
       window.HwcStatusPanel.mount(panelEl);
     }
+    if (panelId === "omx-vdec" && window.OmxVdecPanel) {
+      window.OmxVdecPanel.mount(panelEl);
+    }
     if (panelId === "sf-events" && window.SfEventsPanel) {
       window.SfEventsPanel.mount(panelEl);
     }
@@ -767,6 +783,9 @@ const Dashboard = (() => {
     }
     if (panelId === "hwc-status" && window.HwcStatusPanel?.unmount) {
       window.HwcStatusPanel.unmount();
+    }
+    if (panelId === "omx-vdec" && window.OmxVdecPanel?.unmount) {
+      window.OmxVdecPanel.unmount();
     }
     if (panelId === "sf-events" && window.SfEventsPanel?.unmount) {
       window.SfEventsPanel.unmount();

@@ -17,6 +17,7 @@
 - **SurfaceFlinger - frametimeline 面板**：经 ADB `dumpsys SurfaceFlinger --frametimeline -all`；打开面板后自动按秒刷新；纵轴帧序号、横轴 0–⌈末帧 Expected Present⌉₀₀ ms，绘制 Expected/Actual 的 Start→Present 区间（Jank 红色），点选查看 Layer 明细
 - **proc - meminfo 面板**：经 ADB 读取 `/proc/meminfo`，按秒采样；层叠曲线展示 Swap 已用 / Cached+Buffers / AnonPages，并叠加 MemUsed 曲线（默认关闭）
 - **proc - diskstats 面板**：经 ADB 读取 `/proc/diskstats`；打开时用 `df` 自动映射 `/` `/metadata` `/system_ext` `/vendor` `/product` `/cache` `/data` 到块设备，并与 mmcblk0 / zram0 一起分图绘制读写吞吐（布局同内存带宽；默认关闭）
+- **OMX - VDEC Debug 面板**：经 ADB 读取 `/data/vendor/media/omx_vdec_status.json`（userdebug OMX 调试导出）；按秒刷新各 decoder 的分辨率 / Buffer / 输入输出 / FlowCtrl；可一键 `setprop persist.vendor.omx.vdec.debug 1`（默认关闭）
 - 开始监测后按秒刷新实时网络带宽（WebRTC 收流统计）；未开播时显示预估
 - 打开操作台面板后自动开始播放，并启用键盘 ADB 按键发送
 - 操作台在采集中可点「延时录制」：环形缓冲最近 30 秒，停止后自动打开录制回放面板
@@ -30,6 +31,7 @@
 - 打开 SurfaceFlinger - frametimeline 面板后自动开始采样
 - 打开 proc - meminfo 面板后按秒采样 `/proc/meminfo`
 - 打开 proc - diskstats 面板后先经 `df` 解析挂载磁盘，再按秒采样 `/proc/diskstats` 绘制吞吐曲线
+- 打开 OMX - VDEC Debug 面板后按秒读取设备上的 `omx_vdec_status.json`；需 userdebug OMX（`-DOMX_VDEC_DEBUG_STATUS`）并启用 `persist.vendor.omx.vdec.debug=1`
 
 串口（FTDI）设备发现接口已预留：`GET /api/serial/ports`，终端面板未在首期实现。
 
@@ -108,6 +110,7 @@ http://<工作站IP>:5000
 13. **SurfaceFlinger - frametimeline**：打开面板后自动按秒刷新；纵轴帧序号、横轴 0–⌈末帧 Expected Present⌉₀₀ ms，并排绘制 Expected/Actual 的 Start→Present；点击某一帧查看 Layer 明细
 14. **proc - meminfo**：默认关闭；打开后按秒读取 `/proc/meminfo`，层叠绘制 Swap 已用 / Cached+Buffers / AnonPages，并叠加 MemUsed 曲线
 15. **proc - diskstats**：默认关闭；打开后经 `df` 映射挂载点到块设备，分图绘制 mmcblk0 / zram0 与各挂载分区的 RD / WR / Total（MB/s）；默认打开 mmcblk0、zram0、`/`、`/data`
+16. **OMX - VDEC Debug**：默认关闭；打开后每秒拉取 `/data/vendor/media/omx_vdec_status.json`。需设备为 userdebug OMX 构建；可点「启用调试」写入 `persist.vendor.omx.vdec.debug=1`，然后重新开播才会出现实例
 
 同一时间可多浏览器订阅同一路 HDMI 采集（一路采集、多路转发）。
 
@@ -129,6 +132,8 @@ http://<工作站IP>:5000
 - `GET /api/proc/meminfo` — 读取 `/proc/meminfo`（层叠：Swap 已用 / Cached+Buffers / AnonPages；另含 MemUsed）
 - `GET /api/proc/diskstats/map` — 经 `df` 解析挂载点 → 块设备（mmcblk0 / zram0 + 目标挂载）
 - `GET /api/proc/diskstats?devices=mmcblk0,zram0,dm-5` — 读取 `/proc/diskstats` 累计扇区计数
+- `GET /api/omx/vdec` — 读取 OMX VDEC 调试状态 JSON（`/data/vendor/media/omx_vdec_status.json`）
+- `POST /api/omx/vdec/enable` — `adb root` + `setprop persist.vendor.omx.vdec.debug 1`
 - `GET /api/serial/ports`
 
 WebRTC 信令（Socket.IO）：`hdmi:offer` / `hdmi:answer` / `hdmi:ice` / `hdmi:stop`
@@ -138,7 +143,7 @@ WebRTC 信令（Socket.IO）：`hdmi:offer` / `hdmi:answer` / `hdmi:ice` / `hdmi
 ```text
 app/
   routes/       # HTTP 页面与 REST API
-  services/     # adb、capture、bandwidth、webrtc、ddr_bw、hwc_layers、hwc_status、sf_events、sf_frametimeline、meminfo、diskstats、delay_export
+  services/     # adb、capture、bandwidth、webrtc、ddr_bw、hwc_layers、hwc_status、sf_events、sf_frametimeline、meminfo、diskstats、omx_vdec、delay_export
   signaling.py  # Socket.IO 信令
 static/         # CSS / JS
 templates/      # 单页 Dashboard

@@ -12,6 +12,7 @@ from app.services import (
     hwc_layers,
     hwc_status,
     meminfo,
+    omx_vdec,
     sf_events,
     sf_frametimeline,
 )
@@ -198,5 +199,38 @@ def proc_diskstats_map():
     else:
         mounts = list(diskstats.TARGET_MOUNTS)
     result = diskstats.resolve_tracks(mounts=mounts)
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.get("/omx/vdec")
+def omx_vdec_sample():
+    result = omx_vdec.sample()
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.post("/omx/vdec/enable")
+def omx_vdec_enable():
+    result = omx_vdec.enable()
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.get("/omx/controls")
+def omx_controls_list():
+    result = omx_vdec.list_controls()
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.post("/omx/controls")
+def omx_controls_set():
+    data = request.get_json(silent=True) or {}
+    control_id = data.get("id") or data.get("control") or ""
+    value = data.get("value")
+    if "on" in data and value is None:
+        value = data.get("on")
+    result = omx_vdec.set_control(str(control_id), value)
     status = 200 if result.get("ok") else 400
     return jsonify(result), status

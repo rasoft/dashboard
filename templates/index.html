@@ -33,6 +33,7 @@
         <button type="button" class="btn" id="btn-add-panel">添加面板</button>
         <div class="menu" id="add-panel-menu" hidden>
           <button type="button" data-panel="hwc-status">IComposer - VPU</button>
+          <button type="button" data-panel="omx-vdec">OMX - VDEC Debug</button>
           <button type="button" data-panel="sf-events">SurfaceFlinger - events</button>
           <button type="button" data-panel="sf-frametimeline">SurfaceFlinger - frametimeline</button>
           <button type="button" data-panel="hwc">SurfaceFlinger - hwclayers</button>
@@ -422,6 +423,19 @@
     </div>
   </template>
 
+  <template id="tpl-omx-vdec">
+    <div class="omx-vdec">
+      <div class="omx-vdec-toolbar">
+        <div class="omx-vdec-meta" id="omx-vdec-meta">等待采样…</div>
+      </div>
+      <div class="omx-vdec-controls" id="omx-vdec-controls" aria-label="OMX 调试开关"></div>
+      <div class="omx-vdec-list" id="omx-vdec-list">
+        <p class="omx-vdec-empty">等待采样…</p>
+      </div>
+      <p class="omx-vdec-status" id="omx-vdec-status">等待操作</p>
+    </div>
+  </template>
+
   <template id="tpl-diskstats">
     <div class="diskstats">
       <div class="ddr-track-toggles" id="diskstats-track-toggles" aria-label="磁盘曲线图开关"></div>
@@ -445,6 +459,7 @@
   <script src="{{ url_for('static', filename='js/sf-frametimeline.js') }}"></script>
   <script src="{{ url_for('static', filename='js/meminfo.js') }}"></script>
   <script src="{{ url_for('static', filename='js/diskstats.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/omx-vdec.js') }}"></script>
   <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>
