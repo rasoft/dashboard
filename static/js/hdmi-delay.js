@@ -248,6 +248,7 @@ window.HdmiDelayPanel = (() => {
       pauseBtn: root.querySelector("#hdmi-delay-pause"),
       prev: root.querySelector("#hdmi-delay-prev"),
       next: root.querySelector("#hdmi-delay-next"),
+      saveImageBtn: root.querySelector("#hdmi-delay-save-image"),
       saveBtn: root.querySelector("#hdmi-delay-save"),
       pos: root.querySelector("#hdmi-delay-pos"),
       seek: root.querySelector("#hdmi-delay-seek"),
@@ -323,7 +324,7 @@ window.HdmiDelayPanel = (() => {
 
   function syncControls() {
     if (!root) return;
-    const { playBtn, pauseBtn, prev, next, saveBtn, pos, seek, seekCur, seekDur } = els();
+    const { playBtn, pauseBtn, prev, next, saveImageBtn, saveBtn, pos, seek, seekCur, seekDur } = els();
     const rec = window.HdmiDelayRecord?.getState?.() || {};
     const frames = clipFrames();
     const n = frames.length;
@@ -333,6 +334,7 @@ window.HdmiDelayPanel = (() => {
     if (pauseBtn) pauseBtn.disabled = !has || !playing || saving;
     if (prev) prev.disabled = !has || index <= 0 || saving;
     if (next) next.disabled = !has || index >= n - 1 || saving;
+    if (saveImageBtn) saveImageBtn.disabled = !has || saving;
     if (saveBtn) {
       saveBtn.disabled = !has || saving;
       saveBtn.textContent = saving ? "保存中…" : "保存视频";
@@ -444,18 +446,26 @@ window.HdmiDelayPanel = (() => {
     setStatus("逐帧");
   }
 
-  function defaultSaveName() {
+  function stampName(ext) {
     const d = new Date();
     const p = (n) => String(n).padStart(2, "0");
-    return `hdmi-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.mp4`;
+    return `hdmi-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}${ext}`;
   }
 
-  async function pickSaveHandle(filename) {
+  function defaultSaveName() {
+    return stampName(".mp4");
+  }
+
+  function defaultImageName() {
+    return stampName(`-f${index + 1}.jpg`);
+  }
+
+  async function pickSaveHandle(filename, type) {
     if (typeof window.showSaveFilePicker !== "function") return null;
     return window.showSaveFilePicker({
       suggestedName: filename,
       types: [
-        {
+        type || {
           description: "MP4 视频",
           accept: { "video/mp4": [".mp4"] },
         },
@@ -514,6 +524,48 @@ window.HdmiDelayPanel = (() => {
       setStatus("正在导出视频…");
       xhr.send(pack);
     });
+  }
+
+  async function onSaveImageClick() {
+    if (saving) return;
+    const frames = clipFrames();
+    const frame = frames[index];
+    if (!frame?.blob) {
+      setStatus("没有可保存的画面");
+      return;
+    }
+    if (playing) pause();
+    const filename = defaultImageName();
+    let handle = null;
+    try {
+      handle = await pickSaveHandle(filename, {
+        description: "JPEG 图片",
+        accept: { "image/jpeg": [".jpg", ".jpeg"] },
+      });
+    } catch (err) {
+      if (err && (err.name === "AbortError" || err.name === "NotAllowedError")) {
+        setStatus("已取消保存");
+        return;
+      }
+      handle = null;
+    }
+    try {
+      const blob =
+        frame.blob.type === "image/jpeg"
+          ? frame.blob
+          : new Blob([frame.blob], { type: "image/jpeg" });
+      if (handle) {
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        setStatus(`已保存 ${filename}`);
+      } else {
+        downloadBlob(blob, filename);
+        setStatus(`已开始下载 ${filename}`);
+      }
+    } catch (err) {
+      setStatus(`保存失败：${err.message || err}`);
+    }
   }
 
   async function onSaveClick() {
@@ -660,9 +712,23 @@ window.HdmiDelayPanel = (() => {
     syncControls();
   }
 
+  function ensureSaveImageBtn() {
+    if (!root || root.querySelector("#hdmi-delay-save-image")) return;
+    const saveBtn = root.querySelector("#hdmi-delay-save");
+    if (!saveBtn) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn";
+    btn.id = "hdmi-delay-save-image";
+    btn.textContent = "保存图片";
+    btn.disabled = true;
+    saveBtn.before(btn);
+  }
+
   function mount(panelEl) {
     root = panelEl.querySelector(".hdmi-delay");
     if (!root) return;
+    ensureSaveImageBtn();
 
     if (root.dataset.bound !== "1") {
       root.dataset.bound = "1";
@@ -685,6 +751,12 @@ window.HdmiDelayPanel = (() => {
         seek.addEventListener("input", onSeekInput);
         seek.addEventListener("change", onSeekInput);
       }
+    }
+
+    const { saveImageBtn } = els();
+    if (saveImageBtn && saveImageBtn.dataset.bound !== "1") {
+      saveImageBtn.dataset.bound = "1";
+      saveImageBtn.addEventListener("click", () => onSaveImageClick());
     }
 
     if (!unsub && window.HdmiDelayRecord?.subscribe) {
