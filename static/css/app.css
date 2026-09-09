@@ -214,36 +214,6 @@ body {
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
 }
 
-/* Enlarge GridStack resize hit areas (default handles are easy to miss). */
-.grid-stack > .grid-stack-item > .ui-resizable-handle {
-  z-index: 20;
-}
-.grid-stack > .grid-stack-item > .ui-resizable-se {
-  width: 18px;
-  height: 18px;
-  right: 2px;
-  bottom: 2px;
-  background: linear-gradient(
-    135deg,
-    transparent 0 45%,
-    rgba(61, 156, 240, 0.55) 46% 54%,
-    transparent 55% 70%,
-    rgba(61, 156, 240, 0.75) 71% 79%,
-    transparent 80%
-  );
-}
-.grid-stack > .grid-stack-item > .ui-resizable-e,
-.grid-stack > .grid-stack-item > .ui-resizable-w {
-  width: 10px;
-}
-.grid-stack > .grid-stack-item > .ui-resizable-s {
-  height: 10px;
-}
-.grid-stack > .grid-stack-item > .ui-resizable-sw {
-  width: 14px;
-  height: 14px;
-}
-
 .panel {
   height: 100%;
   display: flex;
