@@ -90,7 +90,7 @@ def hdmi_ice_servers():
 def hdmi_bandwidth():
     width = int(request.args.get("width", current_app.config["DEFAULT_WIDTH"]))
     height = int(request.args.get("height", current_app.config["DEFAULT_HEIGHT"]))
-    fps = int(request.args.get("fps", current_app.config["DEFAULT_FPS"]))
+    fps = int(request.args.get("fps", current_app.config.get("LIVE_FPS") or 30))
     audio = request.args.get("audio", "1") not in ("0", "false", "False")
 
     allowed = set(current_app.config["ALLOWED_RESOLUTIONS"])
@@ -117,6 +117,21 @@ def hdmi_delay_export():
         mimetype="video/mp4",
         as_attachment=True,
         download_name="hdmi-record.mp4",
+    )
+
+
+@api_bp.get("/hdmi/delay-clip")
+def hdmi_delay_clip():
+    data = webrtc_manager.delay_pack()
+    if not data:
+        return jsonify({"ok": False, "error": "没有录制数据"}), 404
+    buf = io.BytesIO(data)
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype="application/octet-stream",
+        as_attachment=True,
+        download_name="hdmi-delay.hdly",
     )
 
 

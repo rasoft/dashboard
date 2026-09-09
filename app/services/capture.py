@@ -166,6 +166,85 @@ def list_alsa_capture() -> list[dict[str, Any]]:
     return matched or devices
 
 
+_DV_FREQ_RE = re.compile(r"Vertical Frequency:\s*([0-9.]+)", re.I)
+_PIXELCLOCK_RE = re.compile(r"Pixel Clock:\s*(\d+)", re.I)
+_TOTAL_W_RE = re.compile(r"Total Width:\s*(\d+)", re.I)
+_TOTAL_H_RE = re.compile(r"Total Height:\s*(\d+)", re.I)
+_PARM_FPS_RE = re.compile(r"Frames per second:\s*([0-9.]+)", re.I)
+_SNAP_RATES = (24, 25, 30, 50, 60)
+
+
+def _snap_fps(value: float) -> int:
+    if value <= 0:
+        return 60
+    return min(_SNAP_RATES, key=lambda rate: abs(rate - value))
+
+
+def _v4l2_ctl(device: str, *args: str) -> str:
+    try:
+        result = subprocess.run(
+            ["v4l2-ctl", "-d", device, *args],
+            capture_output=True,
+            text=True,
+            timeout=3.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return (result.stdout or "") + "\n" + (result.stderr or "")
+
+
+def _fps_from_dv_text(text: str) -> float | None:
+    freq = _DV_FREQ_RE.search(text)
+    if freq:
+        try:
+            value = float(freq.group(1))
+        except ValueError:
+            value = 0.0
+        if value > 1:
+            return value
+    clock = _PIXELCLOCK_RE.search(text)
+    total_w = _TOTAL_W_RE.search(text)
+    total_h = _TOTAL_H_RE.search(text)
+    if not (clock and total_w and total_h):
+        return None
+    try:
+        pixelclock = float(clock.group(1))
+        ht = float(total_w.group(1))
+        vt = float(total_h.group(1))
+    except ValueError:
+        return None
+    if pixelclock <= 0 or ht <= 0 or vt <= 0:
+        return None
+    return pixelclock / (ht * vt)
+
+
+def detect_input_fps(device: str | None) -> int:
+    """Best-effort HDMI/DV input rate for a V4L2 capture node."""
+    fallback = int(current_app.config.get("DEFAULT_FPS") or 60)
+    if not device:
+        return fallback
+    for flag in ("--query-dv-timings", "--get-dv-timings"):
+        fps = _fps_from_dv_text(_v4l2_ctl(device, flag))
+        if fps:
+            snapped = _snap_fps(fps)
+            logger.info("HDMI input fps on %s via %s: %.3f -> %s", device, flag, fps, snapped)
+            return snapped
+    parm = _v4l2_ctl(device, "--get-parm")
+    match = _PARM_FPS_RE.search(parm)
+    if match:
+        try:
+            fps = float(match.group(1))
+        except ValueError:
+            fps = 0.0
+        if fps > 1:
+            snapped = _snap_fps(fps)
+            logger.info("HDMI input fps on %s via parm: %.3f -> %s", device, fps, snapped)
+            return snapped
+    logger.info("HDMI input fps on %s unknown; using %s", device, fallback)
+    return fallback
+
+
 def get_capture_status() -> dict[str, Any]:
     videos = list_video_devices()
     audios = list_alsa_capture()

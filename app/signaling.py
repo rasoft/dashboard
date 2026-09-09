@@ -49,7 +49,6 @@ def on_hdmi_offer(data):
 
     width = int(data.get("width") or current_app.config["DEFAULT_WIDTH"])
     height = int(data.get("height") or current_app.config["DEFAULT_HEIGHT"])
-    fps = int(data.get("fps") or current_app.config["DEFAULT_FPS"])
     audio = bool(data.get("audio", True))
     allowed = set(current_app.config["ALLOWED_RESOLUTIONS"])
     if (width, height) not in allowed:
@@ -57,6 +56,9 @@ def on_hdmi_offer(data):
         return
 
     video_device = status["video"]["device"]
+    capture_fps = capture.detect_input_fps(video_device)
+    live_cap = int(current_app.config.get("LIVE_FPS") or 30)
+    live_fps = max(1, min(capture_fps, live_cap))
     audio_device = None
     if audio and status.get("audio"):
         # Prefer plughw for ffmpeg format conversion.
@@ -76,7 +78,8 @@ def on_hdmi_offer(data):
         video_device=video_device,
         width=width,
         height=height,
-        fps=fps,
+        capture_fps=capture_fps,
+        live_fps=live_fps,
         audio=audio,
         audio_device=audio_device,
         request_host=request.host,
@@ -92,6 +95,8 @@ def on_hdmi_offer(data):
             "sdp": result["sdp"],
             "type": result["type"],
             "subscribers": result.get("subscribers"),
+            "captureFps": result.get("captureFps") or capture_fps,
+            "liveFps": result.get("liveFps") or live_fps,
         },
     )
 
@@ -115,3 +120,15 @@ def on_hdmi_ice(data):
 def on_hdmi_stop(_data=None):
     webrtc_manager.stop(request.sid)
     emit("hdmi:state", {"state": "closed"})
+
+
+@socketio.on("hdmi:delay-start")
+def on_hdmi_delay_start(_data=None):
+    result = webrtc_manager.delay_start()
+    emit("hdmi:delay-state", result)
+
+
+@socketio.on("hdmi:delay-stop")
+def on_hdmi_delay_stop(_data=None):
+    result = webrtc_manager.delay_stop()
+    emit("hdmi:delay-stopped", result)

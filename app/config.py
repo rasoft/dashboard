@@ -16,7 +16,9 @@ class Config:
     CAPTURE_NAME_FILTERS = ("MACROSILICON", "USB3 Video", "USB2 Video", "USB Video")
     DEFAULT_WIDTH = 1920
     DEFAULT_HEIGHT = 1080
-    DEFAULT_FPS = 30
+    DEFAULT_FPS = 60
+    # Live WebRTC preview can run below the HDMI source rate to save bandwidth.
+    LIVE_FPS = int(os.environ.get("LIVE_FPS", "30"))
     ALLOWED_RESOLUTIONS = ((1280, 720), (1920, 1080))
 
     # WebRTC ICE: STUN lets WAN clients reach the DMZ/public host; TURN is optional fallback.
@@ -40,5 +42,5 @@ class Config:
     WEBRTC_ANNOUNCE_IP = os.environ.get("WEBRTC_ANNOUNCE_IP", "").strip()
     WEBRTC_ANNOUNCE_REPLACE = _split_urls(os.environ.get("WEBRTC_ANNOUNCE_REPLACE", ""))
 
-    # Packed JPEG sequence from the delay-record panel (up to ~30s 1080p).
-    MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH", str(400 * 1024 * 1024)))
+    # Packed JPEG sequence from the delay-record panel (up to ~30s at source fps).
+    MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH", str(800 * 1024 * 1024)))

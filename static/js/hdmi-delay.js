@@ -1,93 +1,28 @@
 window.HdmiDelayRecord = (() => {
   const MAX_MS = 30000;
-  const MAX_FRAMES = 1800;
-  const JPEG_QUALITY = 0.68;
   const listeners = new Set();
 
   let video = null;
-  let capVideo = null;
-  let capTrack = null;
+  let sock = null;
+  let socketBound = false;
   let recording = false;
-  let frames = [];
   let clip = null;
-  let canvas = null;
-  let ctx = null;
-  let encoding = false;
-  let rvfcId = null;
-  let rafId = null;
-  let lastNotifyAt = 0;
-  let captureWidth = 0;
-  let captureHeight = 0;
-
-  function captureSource() {
-    return capVideo || video;
-  }
-
-  function stopCaptureClone() {
-    if (capVideo && rvfcId != null && typeof capVideo.cancelVideoFrameCallback === "function") {
-      try {
-        capVideo.cancelVideoFrameCallback(rvfcId);
-      } catch {
-        /* ignore */
-      }
-      rvfcId = null;
-    }
-    if (capTrack) {
-      try {
-        capTrack.stop();
-      } catch {
-        /* ignore */
-      }
-      capTrack = null;
-    }
-    if (capVideo) {
-      try {
-        capVideo.pause();
-      } catch {
-        /* ignore */
-      }
-      capVideo.srcObject = null;
-      capVideo = null;
-    }
-  }
-
-  function startCaptureClone() {
-    stopCaptureClone();
-    if (!(video?.srcObject instanceof MediaStream)) return;
-    const srcTrack = video.srcObject.getVideoTracks()[0];
-    if (!srcTrack) return;
-    try {
-      capTrack = srcTrack.clone();
-      capVideo = document.createElement("video");
-      capVideo.muted = true;
-      capVideo.defaultMuted = true;
-      capVideo.playsInline = true;
-      capVideo.setAttribute("muted", "");
-      capVideo.srcObject = new MediaStream([capTrack]);
-      capVideo.play().catch((err) => console.warn("hdmi-delay clone play", err));
-    } catch (err) {
-      console.warn("hdmi-delay clone", err);
-      stopCaptureClone();
-    }
-  }
-
-  function nowMs() {
-    return performance.now();
-  }
-
-  function bufferDurationMs() {
-    if (frames.length < 2) return frames.length ? 0 : 0;
-    return Math.max(0, frames[frames.length - 1].t - frames[0].t);
-  }
+  let remote = { bufferMs: 0, frameCount: 0, fps: 0, maxMs: MAX_MS };
+  let pendingOpenPanel = false;
 
   function getState() {
-    const dur = recording ? bufferDurationMs() : clip?.durationMs || 0;
-    const count = recording ? frames.length : clip?.frames?.length || 0;
+    const dur = recording ? remote.bufferMs || 0 : clip?.durationMs || 0;
+    const count = recording ? remote.frameCount || 0 : clip?.frames?.length || 0;
+    let fps = recording ? remote.fps || 0 : 0;
+    if (!recording && clip?.frames?.length > 1 && clip.durationMs > 200) {
+      fps = ((clip.frames.length - 1) * 1000) / clip.durationMs;
+    }
     return {
       recording,
       hasVideo: !!(video && video.srcObject),
       bufferMs: dur,
       frameCount: count,
+      fps,
       maxMs: MAX_MS,
       hasClip: !!(clip && clip.frames.length),
     };
@@ -122,156 +57,97 @@ window.HdmiDelayRecord = (() => {
     });
   }
 
-  function notifyProgress() {
-    const t = nowMs();
-    if (t - lastNotifyAt < 200 && frames.length > 1) return;
-    lastNotifyAt = t;
-    notify("progress");
-  }
-
-  function ensureCanvas(w, h) {
-    if (!canvas) {
-      canvas = document.createElement("canvas");
-      ctx = canvas.getContext("2d", { alpha: false });
-    }
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
-    }
-  }
-
-  function prune(now) {
-    const cutoff = now - MAX_MS;
-    while (frames.length && frames[0].t < cutoff) {
-      frames.shift();
-    }
-    while (frames.length > MAX_FRAMES) {
-      frames.shift();
-    }
-  }
-
-  function clearLiveFrames() {
-    frames = [];
-    captureWidth = 0;
-    captureHeight = 0;
-  }
-
-  function clearClip() {
-    clip = null;
-  }
-
-  function freezeClip() {
-    if (!frames.length) {
-      clip = null;
+  function applyRemote(s, reason) {
+    if (!s) return;
+    if (s.ok === false && s.error) {
+      recording = false;
+      notify("sync");
       return;
     }
-    const t0 = frames[0].t;
-    clip = {
-      frames: frames.map((f) => ({ t: f.t - t0, blob: f.blob, w: f.w, h: f.h })),
-      durationMs: frames[frames.length - 1].t - t0,
-      width: captureWidth || frames[0].w,
-      height: captureHeight || frames[0].h,
+    remote = {
+      bufferMs: s.bufferMs || 0,
+      frameCount: s.frameCount || 0,
+      fps: s.fps || 0,
+      maxMs: s.maxMs || MAX_MS,
     };
-    frames = [];
+    if (typeof s.recording === "boolean") recording = s.recording;
+    notify(reason || "progress");
   }
 
-  function cancelSchedule() {
-    const src = captureSource();
-    if (src && rvfcId != null && typeof src.cancelVideoFrameCallback === "function") {
-      try {
-        src.cancelVideoFrameCallback(rvfcId);
-      } catch {
-        /* ignore */
-      }
+  function unpackHdly(buffer) {
+    const data = new DataView(buffer);
+    if (data.byteLength < 20) return null;
+    const magic = String.fromCharCode(
+      data.getUint8(0),
+      data.getUint8(1),
+      data.getUint8(2),
+      data.getUint8(3)
+    );
+    if (magic !== "HDLY") return null;
+    const count = data.getUint32(8, true);
+    const width = data.getUint32(12, true);
+    const height = data.getUint32(16, true);
+    let offset = 20;
+    const frames = [];
+    for (let i = 0; i < count; i += 1) {
+      if (offset + 8 > data.byteLength) break;
+      const t = data.getUint32(offset, true);
+      const size = data.getUint32(offset + 4, true);
+      offset += 8;
+      if (size < 32 || offset + size > data.byteLength) break;
+      const slice = buffer.slice(offset, offset + size);
+      offset += size;
+      frames.push({ t, blob: new Blob([slice], { type: "image/jpeg" }), w: width, h: height });
     }
-    rvfcId = null;
-    if (rafId != null) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
-    }
+    if (!frames.length) return null;
+    return {
+      frames,
+      durationMs: frames[frames.length - 1].t || 0,
+      width,
+      height,
+    };
   }
 
-  function canCapture() {
-    const src = captureSource();
-    if (!recording || !src) return false;
-    if (window.Dashboard?.isPaused?.()) return false;
-    if (src.paused || src.ended) return false;
-    if (!src.srcObject) return false;
-    if (!src.videoWidth || !src.videoHeight) return false;
-    if (src.readyState < 2) return false;
-    return true;
-  }
-
-  function blobFromCanvas() {
-    if (canvas.convertToBlob) {
-      return canvas.convertToBlob({ type: "image/jpeg", quality: JPEG_QUALITY });
-    }
-    return new Promise((resolve) => {
-      canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY);
-    });
-  }
-
-  async function captureFrame(t) {
-    const src = captureSource();
-    if (encoding || !canCapture()) return;
-    encoding = true;
-    try {
-      const srcW = src.videoWidth;
-      const srcH = src.videoHeight;
-      const maxW = 1920;
-      const scale = srcW > maxW ? maxW / srcW : 1;
-      const w = Math.max(1, Math.round(srcW * scale));
-      const h = Math.max(1, Math.round(srcH * scale));
-      let bmp;
-      try {
-        bmp = await createImageBitmap(src);
-      } catch (err) {
-        console.warn("hdmi-delay bitmap", err);
-        return;
-      }
-      if (!recording) {
-        bmp.close();
-        return;
-      }
-      ensureCanvas(w, h);
-      ctx.drawImage(bmp, 0, 0, w, h);
-      bmp.close();
-      const blob = await blobFromCanvas();
-      if (!recording || !blob || blob.size < 32) return;
-      captureWidth = w;
-      captureHeight = h;
-      frames.push({ t, blob, w, h });
-      prune(t);
-      notifyProgress();
-    } catch (err) {
-      console.warn("hdmi-delay capture", err);
-    } finally {
-      encoding = false;
-    }
-  }
-
-  function onVideoFrame(_now, _meta) {
-    rvfcId = null;
-    if (!recording) return;
-    captureFrame(nowMs());
-    scheduleNext();
-  }
-
-  function onRaf() {
-    rafId = null;
-    if (!recording) return;
-    captureFrame(nowMs());
-    scheduleNext();
-  }
-
-  function scheduleNext() {
-    const src = captureSource();
-    if (!recording || !src) return;
-    if (typeof src.requestVideoFrameCallback === "function") {
-      rvfcId = src.requestVideoFrameCallback(onVideoFrame);
+  async function finishStopped(s) {
+    recording = false;
+    applyRemote({ ...s, recording: false }, "progress");
+    if (!s || !s.ok || !s.hasClip) {
+      if (!clip) clip = null;
+      notify("stop");
       return;
     }
-    rafId = requestAnimationFrame(onRaf);
+    try {
+      const res = await fetch("/api/hdmi/delay-clip");
+      if (!res.ok) throw new Error("无法读取录制数据");
+      const buf = await res.arrayBuffer();
+      clip = unpackHdly(buf);
+    } catch (err) {
+      console.warn("hdmi-delay fetch clip", err);
+      clip = null;
+    }
+    notify("stop");
+    if (pendingOpenPanel && clip?.frames?.length && window.Dashboard?.addPanel) {
+      window.Dashboard.addPanel("hdmi-delay");
+    }
+    pendingOpenPanel = false;
+  }
+
+  function bindSocket(next) {
+    sock = next || sock;
+    if (!sock || socketBound) return;
+    socketBound = true;
+    sock.on("hdmi:delay-progress", (s) => applyRemote(s, "progress"));
+    sock.on("hdmi:delay-state", (s) => {
+      if (s && s.ok === false && s.error) {
+        recording = false;
+        notify("sync");
+        return;
+      }
+      applyRemote(s, s?.recording ? "start" : "sync");
+    });
+    sock.on("hdmi:delay-stopped", (s) => {
+      finishStopped(s).catch((err) => console.warn("hdmi-delay stop", err));
+    });
   }
 
   function attach(videoEl) {
@@ -281,7 +157,6 @@ window.HdmiDelayRecord = (() => {
 
   function detach() {
     if (recording) stop({ openPanel: true });
-    stopCaptureClone();
     video = null;
     notify("detach");
   }
@@ -291,27 +166,24 @@ window.HdmiDelayRecord = (() => {
     if (!video || !video.srcObject) {
       return { ok: false, error: "请先开始 HDMI 采集" };
     }
-    clearClip();
-    clearLiveFrames();
-    recording = true;
-    lastNotifyAt = 0;
-    startCaptureClone();
-    notify("start");
-    scheduleNext();
+    if (!sock) return { ok: false, error: "信令未连接" };
+    clip = null;
+    pendingOpenPanel = false;
+    remote = { bufferMs: 0, frameCount: 0, fps: 0, maxMs: MAX_MS };
+    sock.emit("hdmi:delay-start");
     return { ok: true };
   }
 
   function stop(opts = {}) {
-    if (!recording) return { ok: true, clip };
-    recording = false;
-    cancelSchedule();
-    stopCaptureClone();
-    freezeClip();
-    notify("stop");
-    const openPanel = opts.openPanel !== false && clip && clip.frames.length;
-    if (openPanel && window.Dashboard?.addPanel) {
-      window.Dashboard.addPanel("hdmi-delay");
+    pendingOpenPanel = opts.openPanel !== false;
+    if (!recording) {
+      if (pendingOpenPanel && clip?.frames?.length && window.Dashboard?.addPanel) {
+        window.Dashboard.addPanel("hdmi-delay");
+      }
+      return { ok: true, clip };
     }
+    if (sock) sock.emit("hdmi:delay-stop");
+    else recording = false;
     return { ok: true, clip };
   }
 
@@ -349,6 +221,7 @@ window.HdmiDelayRecord = (() => {
     getClip,
     packClip,
     subscribe,
+    bindSocket,
   };
 })();
 
@@ -762,7 +635,9 @@ window.HdmiDelayPanel = (() => {
       pause();
       setOverlay("正在录制，停止后可回放", true);
       setStatus(
-        `环形缓冲 ${formatTime(state.bufferMs)} / ${formatTime(state.maxMs)} · ${state.frameCount} 帧（超出 30 秒将丢弃更早画面）`
+        `环形缓冲 ${formatTime(state.bufferMs)} / ${formatTime(state.maxMs)} · ${state.frameCount} 帧` +
+          (state.fps > 0 ? ` · ${state.fps.toFixed(1)}fps` : "") +
+          "（超出 30 秒将丢弃更早画面）"
       );
       syncControls();
       return;

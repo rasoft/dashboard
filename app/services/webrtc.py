@@ -14,7 +14,6 @@ import threading
 import time
 from typing import Any, Callable, Optional, Sequence
 
-import numpy as np
 from aiortc import (
     AudioStreamTrack,
     RTCConfiguration,
@@ -23,14 +22,43 @@ from aiortc import (
     RTCSessionDescription,
     VideoStreamTrack,
 )
-from aiortc.mediastreams import MediaStreamError, MediaStreamTrack
+from aiortc.mediastreams import (
+    VIDEO_CLOCK_RATE,
+    VIDEO_TIME_BASE,
+    MediaStreamError,
+    MediaStreamTrack,
+)
 from aiortc.sdp import SessionDescription, candidate_from_sdp, candidate_to_sdp
 from av import AudioFrame, VideoFrame
 from av.frame import Frame
 
 from app.config import Config
+from app.services.delay_record import DelayRing
 
 logger = logging.getLogger(__name__)
+
+
+def _tune_aiortc_latency() -> None:
+    """Raise encoder bitrate caps so 1080p60 is not stuck at ~0.5–1.5 Mbps."""
+    try:
+        from aiortc.codecs import vpx
+
+        vpx.MIN_BITRATE = 500_000
+        vpx.DEFAULT_BITRATE = 6_000_000
+        vpx.MAX_BITRATE = 12_000_000
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("could not raise VP8 bitrate cap: %s", exc)
+    try:
+        from aiortc.codecs import h264
+
+        h264.MIN_BITRATE = 500_000
+        h264.DEFAULT_BITRATE = 6_000_000
+        h264.MAX_BITRATE = 12_000_000
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("could not raise H264 bitrate cap: %s", exc)
+
+
+_tune_aiortc_latency()
 
 _udp_port_range_applied = False
 _udp_port_range_lock = threading.Lock()
@@ -367,17 +395,29 @@ class FFmpegV4L2Track(VideoStreamTrack):
     OpenCV/PyAV MediaPlayer; ffmpeg tolerates them and keeps streaming.
     """
 
-    def __init__(self, device: str, width: int, height: int, fps: int = 30):
+    def __init__(self, device: str, width: int, height: int, capture_fps: int = 60, live_fps: int = 30, delay_ring: Optional[DelayRing] = None):
         super().__init__()
         self.device = device
         self.width = width
         self.height = height
-        self.fps = max(1, int(fps))
-        self._frame_bytes = width * height * 3
+        self.capture_fps = max(1, int(capture_fps))
+        self.fps = max(1, int(live_fps))
+        self._delay_ring = delay_ring
+        self._y_size = width * height
+        self._uv_size = (width // 2) * (height // 2)
+        self._frame_bytes = self._y_size + 2 * self._uv_size
         self._proc: Optional[subprocess.Popen[bytes]] = None
         self._stderr_thread: Optional[threading.Thread] = None
+        self._reader_thread: Optional[threading.Thread] = None
         self._stopped = False
         self._start_lock = threading.Lock()
+        self._frame_lock = threading.Lock()
+        self._bufs = [bytearray(self._frame_bytes) for _ in range(3)]
+        self._latest_idx = 0
+        self._busy_idx = -1
+        self._have_frame = threading.Event()
+        self._frame_index = 0
+        self._blank = bytearray(self._frame_bytes)
 
     def _spawn(self) -> None:
         with self._start_lock:
@@ -392,6 +432,12 @@ class FFmpegV4L2Track(VideoStreamTrack):
                 "nobuffer",
                 "-flags",
                 "low_delay",
+                "-probesize",
+                "32",
+                "-analyzeduration",
+                "0",
+                "-avioflags",
+                "direct",
                 "-f",
                 "v4l2",
                 "-input_format",
@@ -399,14 +445,20 @@ class FFmpegV4L2Track(VideoStreamTrack):
                 "-video_size",
                 f"{self.width}x{self.height}",
                 "-framerate",
-                str(self.fps),
+                str(self.capture_fps),
+                "-thread_queue_size",
+                "1",
+                "-rtbufsize",
+                "2M",
                 "-i",
                 self.device,
                 "-an",
+                "-flush_packets",
+                "1",
                 "-f",
                 "rawvideo",
                 "-pix_fmt",
-                "rgb24",
+                "yuv420p",
                 "-vsync",
                 "0",
                 "pipe:1",
@@ -417,7 +469,7 @@ class FFmpegV4L2Track(VideoStreamTrack):
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                bufsize=self._frame_bytes * 2,
+                bufsize=0,
                 start_new_session=True,
             )
 
@@ -432,47 +484,120 @@ class FFmpegV4L2Track(VideoStreamTrack):
                 target=_drain_stderr, name="ffmpeg-stderr", daemon=True
             )
             self._stderr_thread.start()
+            self._reader_thread = threading.Thread(
+                target=self._reader_loop, name="ffmpeg-v4l2-reader", daemon=True
+            )
+            self._reader_thread.start()
 
-    def _read_exact(self) -> bytes:
-        self._spawn()
+    def _read_into(self, buf: bytearray) -> None:
         assert self._proc is not None and self._proc.stdout is not None
-        buf = bytearray()
-        while len(buf) < self._frame_bytes:
+        view = memoryview(buf)
+        filled = 0
+        while filled < self._frame_bytes:
             if self._stopped:
                 raise MediaStreamError("Track ended")
-            chunk = self._proc.stdout.read(self._frame_bytes - len(buf))
+            chunk = self._proc.stdout.read(self._frame_bytes - filled)
             if not chunk:
                 code = self._proc.poll()
                 raise MediaStreamError(
                     f"ffmpeg stdout closed (exit={code}) while reading {self.device}"
                 )
-            buf.extend(chunk)
-        return bytes(buf)
+            view[filled : filled + len(chunk)] = chunk
+            filled += len(chunk)
+
+    def _reader_loop(self) -> None:
+        write = 1
+        try:
+            while not self._stopped:
+                with self._frame_lock:
+                    for i in range(3):
+                        if i != self._latest_idx and i != self._busy_idx:
+                            write = i
+                            break
+                self._read_into(self._bufs[write])
+                with self._frame_lock:
+                    self._latest_idx = write
+                self._have_frame.set()
+                ring = self._delay_ring
+                if ring is not None and ring.recording:
+                    ring.offer(self._bufs[write], self.width, self.height)
+        except MediaStreamError:
+            logger.info("capture reader ended for %s", self.device)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("capture reader failed: %s", exc)
+
+    def _make_frame(
+        self, buf: bytearray, pts: int, time_base: fractions.Fraction
+    ) -> VideoFrame:
+        y = self._y_size
+        uv = self._uv_size
+        frame = VideoFrame(width=self.width, height=self.height, format="yuv420p")
+        view = memoryview(buf)
+        frame.planes[0].update(view[0:y])
+        frame.planes[1].update(view[y : y + uv])
+        frame.planes[2].update(view[y + uv : y + 2 * uv])
+        frame.pts = pts
+        frame.time_base = time_base
+        return frame
+
+    def _grab_frame(self, pts: int, time_base: fractions.Fraction) -> VideoFrame:
+        if not self._have_frame.wait(timeout=2.0):
+            return self._make_frame(self._blank, pts, time_base)
+        with self._frame_lock:
+            idx = self._latest_idx
+            self._busy_idx = idx
+        try:
+            return self._make_frame(self._bufs[idx], pts, time_base)
+        finally:
+            with self._frame_lock:
+                if self._busy_idx == idx:
+                    self._busy_idx = -1
+
+    async def next_timestamp(self) -> tuple[int, fractions.Fraction]:
+        if self.readyState != "live":
+            raise MediaStreamError
+        ptime = 1.0 / self.fps
+        now = time.time()
+        if not hasattr(self, "_timestamp"):
+            self._start = now
+            self._timestamp = 0
+            self._frame_index = 0
+            return self._timestamp, VIDEO_TIME_BASE
+
+        self._frame_index += 1
+        target = self._start + self._frame_index * ptime
+        wait = target - time.time()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        elif wait < -ptime:
+            # Late: keep PTS monotonic and realign the wall clock so the
+            # next recv sleeps a full tick instead of bursting or jumping PTS.
+            self._start = time.time() - self._frame_index * ptime
+
+        self._timestamp = int(self._frame_index * ptime * VIDEO_CLOCK_RATE)
+        return self._timestamp, VIDEO_TIME_BASE
 
     async def recv(self) -> VideoFrame:
         if self._stopped:
             raise MediaStreamError("Track ended")
 
-        pts, time_base = await self.next_timestamp()
         loop = asyncio.get_running_loop()
+        if self._proc is None:
+            await loop.run_in_executor(None, self._spawn)
+        pts, time_base = await self.next_timestamp()
         try:
-            data = await loop.run_in_executor(None, self._read_exact)
-            img = np.frombuffer(data, dtype=np.uint8).reshape(
-                (self.height, self.width, 3)
+            return await loop.run_in_executor(
+                None, self._grab_frame, pts, time_base
             )
         except MediaStreamError:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("frame read failed: %s", exc)
-            img = np.zeros((self.height, self.width, 3), dtype=np.uint8)
-
-        frame = VideoFrame.from_ndarray(img, format="rgb24")
-        frame.pts = pts
-        frame.time_base = time_base
-        return frame
+            return self._make_frame(self._blank, pts, time_base)
 
     def stop(self) -> None:
         self._stopped = True
+        self._have_frame.set()
         proc = self._proc
         self._proc = None
         if proc is not None:
@@ -489,6 +614,10 @@ class FFmpegV4L2Track(VideoStreamTrack):
                     proc.kill()
                 except Exception:  # noqa: BLE001
                     pass
+        reader = self._reader_thread
+        self._reader_thread = None
+        if reader is not None and reader.is_alive():
+            reader.join(timeout=1.0)
         try:
             super().stop()
         except Exception:  # noqa: BLE001
@@ -640,8 +769,11 @@ class FFmpegAlsaTrack(AudioStreamTrack):
 def _clone_frame(frame: Frame) -> Frame:
     """Deep-copy a PyAV frame so each encoder owns independent buffers."""
     if isinstance(frame, VideoFrame):
-        arr = frame.to_ndarray(format="rgb24").copy()
-        out = VideoFrame.from_ndarray(arr, format="rgb24")
+        out = VideoFrame(
+            width=frame.width, height=frame.height, format=frame.format.name
+        )
+        for i, plane in enumerate(frame.planes):
+            out.planes[i].update(plane)
         if frame.pts is not None:
             out.pts = frame.pts
         try:
@@ -679,7 +811,7 @@ class _CloneRelayTrack(MediaStreamTrack):
         self._relay = relay
         self._source: Optional[MediaStreamTrack] = source
         # Small queue; drop-oldest keeps live latency low under multi-encode load.
-        self._queue: asyncio.Queue[Optional[Frame]] = asyncio.Queue(maxsize=2)
+        self._queue: asyncio.Queue[Optional[Frame]] = asyncio.Queue(maxsize=1)
 
     async def recv(self) -> Frame:
         if self.readyState != "live":
@@ -802,9 +934,12 @@ class WebRTCManager:
         self._async_lock: Optional[asyncio.Lock] = None
         self._emit: Optional[Callable[..., Any]] = None
         self._started = threading.Event()
+        self._delay_ring = DelayRing()
+        self._delay_pack: Optional[bytes] = None
 
     def set_emitter(self, emit: Callable[..., Any]) -> None:
         self._emit = emit
+        self._delay_ring.set_emitter(emit)
 
     def start_loop(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -859,7 +994,8 @@ class WebRTCManager:
         video_device: str,
         width: int,
         height: int,
-        fps: int,
+        capture_fps: int,
+        live_fps: int,
         audio: bool,
         audio_device: Optional[str],
         request_host: str = "",
@@ -881,7 +1017,8 @@ class WebRTCManager:
                 video_device,
                 width,
                 height,
-                fps,
+                capture_fps,
+                live_fps,
                 audio,
                 audio_device,
                 announce_ip,
@@ -907,47 +1044,77 @@ class WebRTCManager:
             return self._submit(self._close_session(sid))
         return self._submit(self._close_all())
 
+    def delay_start(self) -> dict[str, Any]:
+        if self._video_track is None:
+            return {"ok": False, "error": "请先开始 HDMI 采集", "recording": False}
+        self._delay_pack = None
+        status = self._delay_ring.start()
+        status["ok"] = True
+        return status
+
+    def delay_stop(self) -> dict[str, Any]:
+        status = self._delay_ring.stop()
+        self._delay_pack = self._delay_ring.pack()
+        status["ok"] = True
+        status["recording"] = False
+        status["hasClip"] = bool(self._delay_pack)
+        return status
+
+    def delay_pack(self) -> Optional[bytes]:
+        return self._delay_pack
+
     async def _ensure_capture(
         self,
         video_device: str,
         width: int,
         height: int,
-        fps: int,
+        capture_fps: int,
+        live_fps: int,
         audio: bool,
         audio_device: Optional[str],
     ) -> None:
         if self._video_track is None:
-            video_track = FFmpegV4L2Track(video_device, width, height, fps)
+            video_track = FFmpegV4L2Track(
+                video_device,
+                width,
+                height,
+                capture_fps=capture_fps,
+                live_fps=live_fps,
+                delay_ring=self._delay_ring,
+            )
             self._video_track = video_track
             self._video_relay = CloningMediaRelay()
             self._capture_cfg = {
                 "video_device": video_device,
                 "width": width,
                 "height": height,
-                "fps": fps,
+                "capture_fps": capture_fps,
+                "live_fps": live_fps,
             }
             logger.info(
-                "shared HDMI capture started %sx%s@%s on %s",
+                "shared HDMI capture started %sx%s source=%sfps live=%sfps on %s",
                 width,
                 height,
-                fps,
+                capture_fps,
+                live_fps,
                 video_device,
             )
         else:
             cfg = self._capture_cfg or {}
-            if (cfg.get("width"), cfg.get("height"), cfg.get("fps")) != (
+            if (cfg.get("width"), cfg.get("height"), cfg.get("capture_fps")) != (
                 width,
                 height,
-                fps,
+                capture_fps,
             ):
                 logger.info(
-                    "subscriber requested %sx%s@%s; reusing active capture %sx%s@%s",
+                    "subscriber requested %sx%s@%s; reusing active capture %sx%s source=%s live=%s",
                     width,
                     height,
-                    fps,
+                    capture_fps,
                     cfg.get("width"),
                     cfg.get("height"),
-                    cfg.get("fps"),
+                    cfg.get("capture_fps"),
+                    cfg.get("live_fps"),
                 )
 
         if audio and audio_device and self._audio_track is None:
@@ -965,6 +1132,10 @@ class WebRTCManager:
             idle = len(self._sessions) == 0
         if not idle:
             return
+
+        if self._delay_ring.recording:
+            self._delay_pack = None
+            self._delay_ring.stop()
 
         if self._video_track is not None:
             try:
@@ -993,7 +1164,8 @@ class WebRTCManager:
         video_device: str,
         width: int,
         height: int,
-        fps: int,
+        capture_fps: int,
+        live_fps: int,
         audio: bool,
         audio_device: Optional[str],
         announce_ip: str = "",
@@ -1008,7 +1180,13 @@ class WebRTCManager:
 
             try:
                 await self._ensure_capture(
-                    video_device, width, height, fps, audio, audio_device
+                    video_device,
+                    width,
+                    height,
+                    capture_fps,
+                    live_fps,
+                    audio,
+                    audio_device,
                 )
                 assert self._video_track is not None and self._video_relay is not None
 
@@ -1093,6 +1271,8 @@ class WebRTCManager:
                     "type": pc.localDescription.type,
                     "subscribers": self.subscriber_count,
                     "iceCandidates": ice_candidates,
+                    "captureFps": capture_fps,
+                    "liveFps": live_fps,
                 }
             except Exception as exc:  # noqa: BLE001
                 logger.exception("failed to create WebRTC answer for sid=%s", sid)

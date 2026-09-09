@@ -56,12 +56,21 @@ def _parse_pack(data: bytes) -> tuple[list[tuple[int, bytes]], int, int]:
     return frames, width, height
 
 
+def pack_clip(frames: list[tuple[int, bytes]], width: int, height: int) -> bytes:
+    header = struct.pack("<4sIIII", MAGIC, VERSION, len(frames), width, height)
+    parts: list[bytes] = [header]
+    for t_ms, jpeg in frames:
+        parts.append(struct.pack("<II", int(t_ms) & 0xFFFFFFFF, len(jpeg)))
+        parts.append(jpeg)
+    return b"".join(parts)
+
+
 def _fps_for(frames: list[tuple[int, bytes]]) -> float:
     if len(frames) < 2:
         return 1.0
     duration_ms = max(1, frames[-1][0] - frames[0][0])
     fps = (len(frames) - 1) * 1000.0 / duration_ms
-    return min(60.0, max(1.0, fps))
+    return min(120.0, max(1.0, fps))
 
 
 def export_mp4(data: bytes) -> tuple[bytes, None] | tuple[None, str]:

@@ -17,6 +17,8 @@ window.HdmiPanel = (() => {
   let delayUnsub = null;
   let mediaPausedByDashboard = false;
   let audioUnlocked = false;
+  let captureFps = null;
+  let liveFps = 30;
 
   const KEYBOARD_MAP = {
     ArrowUp: "DPAD_UP",
@@ -177,9 +179,11 @@ window.HdmiPanel = (() => {
     }
     if (delayMeta) {
       if (rec.recording) {
-        delayMeta.textContent = `${formatDelaySec(rec.bufferMs)} / 30.0s · ${rec.frameCount} 帧`;
+        const fps = rec.fps > 0 ? ` · ${rec.fps.toFixed(1)}fps` : "";
+        delayMeta.textContent = `${formatDelaySec(rec.bufferMs)} / 30.0s · ${rec.frameCount} 帧${fps}`;
       } else if (rec.hasClip) {
-        delayMeta.textContent = `已保存 ${rec.frameCount} 帧 · ${formatDelaySec(rec.bufferMs)}`;
+        const fps = rec.fps > 0 ? ` · ${rec.fps.toFixed(1)}fps` : "";
+        delayMeta.textContent = `已保存 ${rec.frameCount} 帧 · ${formatDelaySec(rec.bufferMs)}${fps}`;
       } else {
         delayMeta.textContent = running ? "未录制" : "先开始采集";
       }
@@ -201,7 +205,7 @@ window.HdmiPanel = (() => {
       setStatus(result.error || "无法开始录制");
       return;
     }
-    setStatus("延时录制中（保留最近 30 秒）");
+    setStatus("延时录制中（按片源帧率，保留最近 30 秒）");
   }
 
   function setButtons({ running }) {
@@ -237,7 +241,7 @@ window.HdmiPanel = (() => {
     const params = new URLSearchParams({
       width: String(width),
       height: String(height),
-      fps: "30",
+      fps: String(liveFps || 30),
       audio: audio.checked ? "1" : "0",
     });
     try {
@@ -259,6 +263,7 @@ window.HdmiPanel = (() => {
 
   function startStatsMonitor() {
     stopStatsMonitor();
+    applyLowLatencyPlayout();
     if (window.Dashboard?.isPaused?.()) return;
     statsTimer = setInterval(() => {
       if (window.Dashboard?.isPaused?.()) return;
@@ -363,14 +368,17 @@ window.HdmiPanel = (() => {
         frameWidth && frameHeight ? `${frameWidth}×${frameHeight}` : resolution?.value || "";
       const fpsLabel =
         framesPerSecond != null && Number.isFinite(framesPerSecond)
-          ? ` @${Math.round(framesPerSecond)}fps`
-          : "";
+          ? ` @${Math.round(framesPerSecond)}fps 预览`
+          : liveFps
+            ? ` @${liveFps}fps 预览`
+            : "";
+      const srcLabel = captureFps ? ` · 片源 ${captureFps}fps` : "";
 
       setBandwidthText(
         `实时带宽 ${Math.max(0, totalMbps).toFixed(2)} Mbps` +
           `（视频 ${Math.max(0, videoMbps).toFixed(2)} Mbps` +
           ` + 音频 ${Math.max(0, audioKbps).toFixed(0)} kbps）` +
-          (resLabel ? ` · ${resLabel}${fpsLabel}` : "")
+          (resLabel ? ` · ${resLabel}${fpsLabel}${srcLabel}` : "")
       );
     } catch (err) {
       setBandwidthText(`实时带宽读取失败：${err}`);
@@ -387,6 +395,33 @@ window.HdmiPanel = (() => {
       window.removeEventListener("keydown", unmuteGestureHandler, true);
       window.removeEventListener("touchstart", unmuteGestureHandler, true);
       unmuteGestureHandler = null;
+    }
+  }
+
+  function applyLowLatencyPlayout() {
+    if (!pc) return;
+    pc.getReceivers().forEach((receiver) => {
+      try {
+        if ("jitterBufferTarget" in receiver) receiver.jitterBufferTarget = 0;
+      } catch {
+        /* ignore */
+      }
+      try {
+        receiver.playoutDelayHint = 0;
+      } catch {
+        /* ignore */
+      }
+    });
+    const { video } = els();
+    const stream = video?.srcObject;
+    if (stream instanceof MediaStream) {
+      stream.getVideoTracks().forEach((track) => {
+        try {
+          track.contentHint = "motion";
+        } catch {
+          /* ignore */
+        }
+      });
     }
   }
 
@@ -577,9 +612,15 @@ window.HdmiPanel = (() => {
     });
     socket.on("connect", () => setStatus(`信令已连接 (${socket.id})`));
     socket.on("disconnect", () => setStatus("信令断开"));
+    window.HdmiDelayRecord?.bindSocket?.(socket);
+    socket.on("hdmi:delay-state", (s) => {
+      if (s && s.ok === false) setStatus(s.error || "无法开始录制");
+    });
     socket.on("hdmi:answer", async (msg) => {
       try {
         if (!pc) return;
+        if (msg.captureFps) captureFps = msg.captureFps;
+        if (msg.liveFps) liveFps = msg.liveFps;
         await pc.setRemoteDescription(new RTCSessionDescription(msg));
         remoteDescriptionSet = true;
         for (const c of pendingRemoteIce) {
@@ -590,7 +631,11 @@ window.HdmiPanel = (() => {
           }
         }
         pendingRemoteIce = [];
-        setStatus("已收到 Answer，正在连接…");
+        const src = captureFps ? `片源 ${captureFps}fps` : "";
+        const live = liveFps ? `预览 ${liveFps}fps` : "";
+        setStatus(
+          ["已收到 Answer，正在连接…", src, live].filter(Boolean).join(" · ")
+        );
       } catch (err) {
         setStatus(`设置远端描述失败：${err}`);
         setOverlay("连接失败", true);
@@ -722,6 +767,7 @@ window.HdmiPanel = (() => {
       if (ev.track.kind === "audio") {
         ev.track.enabled = true;
       }
+      applyLowLatencyPlayout();
 
       if (window.Dashboard?.isPaused?.()) {
         mediaPausedByDashboard = true;
@@ -804,7 +850,6 @@ window.HdmiPanel = (() => {
         type: offer.type,
         width,
         height,
-        fps: 30,
         audio: enableAudio,
       });
       offerSent = true;
@@ -822,8 +867,19 @@ window.HdmiPanel = (() => {
 
   async function stop() {
     starting = false;
-    const wasRec = !!window.HdmiDelayRecord?.isRecording?.();
+    const rec = window.HdmiDelayRecord;
+    const wasRec = !!rec?.isRecording?.();
     const sock = ensureSocket();
+    if (wasRec && rec) {
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, 2500);
+        sock.once("hdmi:delay-stopped", () => {
+          clearTimeout(timer);
+          resolve();
+        });
+        rec.stop();
+      });
+    }
     if (sock.connected) sock.emit("hdmi:stop", {});
     cleanupPc();
     setButtons({ running: false });
