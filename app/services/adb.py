@@ -73,6 +73,16 @@ def run_adb(args: list[str], timeout: float = 8.0) -> subprocess.CompletedProces
     return _run(_adb_base() + list(args), timeout=timeout)
 
 
+def run_adb_bytes(args: list[str], timeout: float = 8.0) -> subprocess.CompletedProcess[bytes]:
+    """Like run_adb but keep stdout as bytes (YUV / JPEG pulls)."""
+    return subprocess.run(
+        _adb_base() + list(args),
+        capture_output=True,
+        timeout=timeout,
+        check=False,
+    )
+
+
 def run_shell(command: str, timeout: float = 8.0) -> subprocess.CompletedProcess[str]:
     """Run `adb shell <command>` (command as a single shell string)."""
     return _run(_adb_base() + ["shell", command], timeout=timeout)

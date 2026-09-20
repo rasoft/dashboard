@@ -1135,6 +1135,7 @@ body {
   gap: 0.55rem;
   height: 100%;
   min-height: 0;
+  overflow: auto;
 }
 
 .omx-vdec-toolbar {
@@ -1230,6 +1231,54 @@ body {
   background: rgba(255, 255, 255, 0.04);
 }
 
+.omx-vdec-toggle.action {
+  color: #e8f0ff;
+  background: rgba(61, 156, 240, 0.28);
+  border-color: rgba(61, 156, 240, 0.7);
+  font-weight: 650;
+}
+
+.omx-vdec-toggle.action:hover:not(:disabled) {
+  border-color: rgba(61, 156, 240, 0.95);
+  color: #fff;
+}
+
+.omx-vdec-previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin: 0 0 0.65rem;
+  flex: 0 0 auto;
+  max-height: 55%;
+  overflow: auto;
+}
+
+.omx-vdec-previews[hidden] {
+  display: none;
+}
+
+.omx-vdec-preview {
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 220px;
+  max-width: 100%;
+}
+
+.omx-vdec-preview figcaption {
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  color: rgba(232, 240, 255, 0.75);
+}
+
+.omx-vdec-snap {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 0 0.35rem;
+  border-radius: 6px;
+  background: #000;
+}
+
 .omx-vdec-toggle:disabled,
 .omx-vdec-ctrl select:disabled {
   opacity: 0.55;
@@ -1304,6 +1353,32 @@ body {
   background: rgba(43, 182, 115, 0.35);
   border-color: rgba(43, 182, 115, 0.75);
   font-weight: 650;
+}
+
+.omx-vdec-chip.usage-hwc {
+  color: #e8fff0;
+  background: rgba(43, 182, 115, 0.32);
+  border-color: rgba(43, 182, 115, 0.7);
+}
+
+.omx-vdec-chip.usage-gpu {
+  color: #fff4e0;
+  background: rgba(232, 168, 56, 0.32);
+  border-color: rgba(232, 168, 56, 0.75);
+  font-weight: 650;
+}
+
+.omx-vdec-chip.eos-hold {
+  color: #ffe8e8;
+  background: rgba(220, 80, 80, 0.35);
+  border-color: rgba(220, 80, 80, 0.75);
+  font-weight: 650;
+}
+
+.omx-vdec-chip.eos-pending {
+  color: #fff4e0;
+  background: rgba(232, 168, 56, 0.28);
+  border-color: rgba(232, 168, 56, 0.6);
 }
 
 .omx-vdec-table {

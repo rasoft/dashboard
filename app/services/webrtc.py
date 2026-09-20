@@ -221,6 +221,23 @@ def ice_network_info() -> dict[str, Any]:
     return info
 
 
+_BENIGN_FFMPEG_MARKERS = (
+    "Broken pipe",
+    "Error writing trailer",
+    "Error closing file",
+    "Error muxing a packet",
+    "Error submitting a packet",
+    "Terminating thread with return code",
+    "Task finished with error code",
+    "Last message repeated",
+)
+
+
+def _is_benign_ffmpeg_line(text: str) -> bool:
+    """True for ffmpeg messages that are expected during intentional teardown."""
+    return any(marker in text for marker in _BENIGN_FFMPEG_MARKERS)
+
+
 def parse_request_host(host_header: str) -> str:
     """Extract hostname/IP from an HTTP Host header (strip port)."""
     host = (host_header or "").strip()
@@ -477,7 +494,11 @@ class FFmpegV4L2Track(VideoStreamTrack):
                 assert self._proc is not None and self._proc.stderr is not None
                 for line in iter(self._proc.stderr.readline, b""):
                     text = line.decode("utf-8", errors="ignore").strip()
-                    if text:
+                    if not text:
+                        continue
+                    if _is_benign_ffmpeg_line(text):
+                        logger.debug("ffmpeg: %s", text)
+                    else:
                         logger.warning("ffmpeg: %s", text)
 
             self._stderr_thread = threading.Thread(
@@ -601,11 +622,9 @@ class FFmpegV4L2Track(VideoStreamTrack):
         proc = self._proc
         self._proc = None
         if proc is not None:
-            try:
-                if proc.stdout:
-                    proc.stdout.close()
-            except Exception:  # noqa: BLE001
-                pass
+            # Stop ffmpeg first so it exits with a live pipe; only close the
+            # read end afterwards. Closing stdout before termination makes the
+            # muxer hit EPIPE and spam "Broken pipe" on teardown.
             try:
                 proc.terminate()
                 proc.wait(timeout=2)
@@ -614,6 +633,16 @@ class FFmpegV4L2Track(VideoStreamTrack):
                     proc.kill()
                 except Exception:  # noqa: BLE001
                     pass
+            try:
+                if proc.stdout:
+                    proc.stdout.close()
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                if proc.stderr:
+                    proc.stderr.close()
+            except Exception:  # noqa: BLE001
+                pass
         reader = self._reader_thread
         self._reader_thread = None
         if reader is not None and reader.is_alive():
@@ -688,7 +717,11 @@ class FFmpegAlsaTrack(AudioStreamTrack):
                 assert self._proc is not None and self._proc.stderr is not None
                 for line in iter(self._proc.stderr.readline, b""):
                     text = line.decode("utf-8", errors="ignore").strip()
-                    if text:
+                    if not text:
+                        continue
+                    if _is_benign_ffmpeg_line(text):
+                        logger.debug("ffmpeg-audio: %s", text)
+                    else:
                         logger.warning("ffmpeg-audio: %s", text)
 
             self._stderr_thread = threading.Thread(
@@ -748,11 +781,6 @@ class FFmpegAlsaTrack(AudioStreamTrack):
         self._proc = None
         if proc is not None:
             try:
-                if proc.stdout:
-                    proc.stdout.close()
-            except Exception:  # noqa: BLE001
-                pass
-            try:
                 proc.terminate()
                 proc.wait(timeout=2)
             except Exception:  # noqa: BLE001
@@ -760,6 +788,16 @@ class FFmpegAlsaTrack(AudioStreamTrack):
                     proc.kill()
                 except Exception:  # noqa: BLE001
                     pass
+            try:
+                if proc.stdout:
+                    proc.stdout.close()
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                if proc.stderr:
+                    proc.stderr.close()
+            except Exception:  # noqa: BLE001
+                pass
         try:
             super().stop()
         except Exception:  # noqa: BLE001

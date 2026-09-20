@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Android Board Dashboard</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=omxsnap3" />
 </head>
 <body>
   <header class="topbar">
@@ -22,6 +22,11 @@
         <span class="label">ADB</span>
         <span class="detail">检测中…</span>
       </div>
+      <div class="status-pill" id="status-codec" data-state="unknown">
+        <span class="dot"></span>
+        <span class="label">解码栈</span>
+        <span class="detail">等待 ADB…</span>
+      </div>
       <div class="status-pill" id="status-hdmi" data-state="unknown">
         <span class="dot"></span>
         <span class="label">HDMI 采集</span>
@@ -33,7 +38,7 @@
         <button type="button" class="btn" id="btn-add-panel">添加面板</button>
         <div class="menu" id="add-panel-menu" hidden>
           <button type="button" data-panel="hwc-status">IComposer - VPU</button>
-          <button type="button" data-panel="omx-vdec">OMX - VDEC</button>
+          <button type="button" data-panel="omx-vdec">OMX/C2 - VDEC Debug</button>
           <button type="button" data-panel="sf-events">SurfaceFlinger - events</button>
           <button type="button" data-panel="sf-frametimeline">SurfaceFlinger - frametimeline</button>
           <button type="button" data-panel="hwc">SurfaceFlinger - hwclayers</button>
@@ -428,8 +433,10 @@
     <div class="omx-vdec">
       <div class="omx-vdec-toolbar">
         <div class="omx-vdec-meta" id="omx-vdec-meta">等待采样…</div>
+        <button type="button" class="omx-vdec-toggle action" id="omx-vdec-snap">抓末帧</button>
       </div>
-      <div class="omx-vdec-controls" id="omx-vdec-controls" aria-label="OMX 调试开关"></div>
+      <div class="omx-vdec-controls" id="omx-vdec-controls" aria-label="OMX/C2 调试开关"></div>
+      <div class="omx-vdec-previews" id="omx-vdec-previews" hidden></div>
       <div class="omx-vdec-list" id="omx-vdec-list">
         <p class="omx-vdec-empty">等待采样…</p>
       </div>
@@ -460,7 +467,7 @@
   <script src="{{ url_for('static', filename='js/sf-frametimeline.js') }}"></script>
   <script src="{{ url_for('static', filename='js/meminfo.js') }}"></script>
   <script src="{{ url_for('static', filename='js/diskstats.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/omx-vdec.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/omx-vdec.js') }}?v=omxsnap9"></script>
   <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>

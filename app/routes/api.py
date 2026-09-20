@@ -6,6 +6,7 @@ from app.services import (
     adb,
     bandwidth,
     capture,
+    codec_stack,
     ddr_bw,
     delay_export,
     diskstats,
@@ -26,6 +27,7 @@ def status():
     return jsonify(
         {
             "adb": adb.get_status(),
+            "codec": codec_stack.probe(),
             "hdmi": capture.get_capture_status(),
             "serial": {"ports": capture.discover_serial_ports()},
             "hdmi_session": {
@@ -247,5 +249,12 @@ def omx_controls_set():
     if "on" in data and value is None:
         value = data.get("on")
     result = omx_vdec.set_control(str(control_id), value)
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.post("/omx/vdec/snap")
+def omx_vdec_snap():
+    result = omx_vdec.snap_last_frame()
     status = 200 if result.get("ok") else 400
     return jsonify(result), status

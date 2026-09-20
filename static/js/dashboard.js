@@ -90,7 +90,7 @@ const PANEL_DEFS = {
   },
   "omx-vdec": {
     id: "omx-vdec",
-    title: "OMX - VDEC",
+    title: "OMX/C2 VDEC",
     w: 7,
     h: 14,
     minW: 2,
@@ -848,6 +848,21 @@ const Dashboard = (() => {
       const res = await fetch("/api/status");
       const data = await res.json();
       updatePill("status-adb", data.adb?.available, data.adb?.selected?.serial || "无设备");
+      const codec = data.codec;
+      if (!data.adb?.available) {
+        updatePill("status-codec", false, "无设备");
+      } else if (codec?.ok) {
+        updatePill("status-codec", true, codec.label || codec.current || "已探测");
+        const bits = [];
+        if (codec.preferred) bits.push("prefer " + String(codec.preferred).toUpperCase());
+        if (codec.ccodec != null && codec.ccodec !== "") bits.push("ccodec=" + codec.ccodec);
+        if (codec.c2_hal) bits.push("hal=" + codec.c2_hal);
+        if (codec.codecs?.length) bits.push(codec.codecs.join(", "));
+        const codecEl = document.getElementById("status-codec");
+        if (codecEl) codecEl.title = bits.join(" · ");
+      } else {
+        updatePill("status-codec", false, codec?.label || codec?.error || "探测失败");
+      }
       let hdmiName = "未检测到采集卡";
       if (data.hdmi?.video?.device) {
         const name = data.hdmi.video.name || "采集卡";
@@ -858,6 +873,7 @@ const Dashboard = (() => {
       updatePill("status-hdmi", data.hdmi?.available, hdmiName);
     } catch (err) {
       updatePill("status-adb", false, "状态获取失败");
+      updatePill("status-codec", false, "状态获取失败");
       updatePill("status-hdmi", false, "状态获取失败");
     }
   }
