@@ -90,7 +90,7 @@ const PANEL_DEFS = {
   },
   "omx-vdec": {
     id: "omx-vdec",
-    title: "OMX/C2 VDEC",
+    title: "OMX/C2 - VDEC",
     w: 7,
     h: 14,
     minW: 2,
