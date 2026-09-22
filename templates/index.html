@@ -22,11 +22,6 @@
         <span class="label">ADB</span>
         <span class="detail">检测中…</span>
       </div>
-      <div class="status-pill" id="status-codec" data-state="unknown">
-        <span class="dot"></span>
-        <span class="label">解码栈</span>
-        <span class="detail">等待 ADB…</span>
-      </div>
       <div class="status-pill" id="status-hdmi" data-state="unknown">
         <span class="dot"></span>
         <span class="label">HDMI 采集</span>
@@ -38,7 +33,8 @@
         <button type="button" class="btn" id="btn-add-panel">添加面板</button>
         <div class="menu" id="add-panel-menu" hidden>
           <button type="button" data-panel="hwc-status">IComposer - VPU</button>
-          <button type="button" data-panel="omx-vdec">OMX/C2 - VDEC</button>
+          <button type="button" data-panel="omx-vdec">OMX - VDEC</button>
+          <button type="button" data-panel="c2-vdec">C2 - VDEC</button>
           <button type="button" data-panel="sf-events">SurfaceFlinger - events</button>
           <button type="button" data-panel="sf-frametimeline">SurfaceFlinger - frametimeline</button>
           <button type="button" data-panel="hwc">SurfaceFlinger - hwclayers</button>
@@ -434,14 +430,30 @@
       <div class="omx-vdec-toolbar">
         <div class="omx-vdec-meta" id="omx-vdec-meta">等待采样…</div>
         <button type="button" class="omx-vdec-toggle action" id="omx-vdec-clear-temps"
-          title="删除 /data/vendor/media 下 OMX/C2 抓帧临时文件（omx_last_frame.V* / c2_last_frame.V*）">清除抓帧文件</button>
+          title="删除 /data/vendor/media 下 OMX 抓帧临时文件（omx_last_frame.V*）">清除抓帧文件</button>
       </div>
-      <div class="omx-vdec-controls" id="omx-vdec-controls" aria-label="OMX/C2 调试开关"></div>
+      <div class="omx-vdec-controls" id="omx-vdec-controls" aria-label="OMX 调试开关"></div>
       <div class="omx-vdec-previews" id="omx-vdec-previews" hidden></div>
       <div class="omx-vdec-list" id="omx-vdec-list">
         <p class="omx-vdec-empty">等待采样…</p>
       </div>
       <p class="omx-vdec-status" id="omx-vdec-status">等待操作</p>
+    </div>
+  </template>
+
+  <template id="tpl-c2-vdec">
+    <div class="omx-vdec">
+      <div class="omx-vdec-toolbar">
+        <div class="omx-vdec-meta" id="c2-vdec-meta">等待采样…</div>
+        <button type="button" class="omx-vdec-toggle action" id="c2-vdec-clear-temps"
+          title="删除 /data/vendor/media 下 C2 抓帧临时文件（c2_last_frame.V*）">清除抓帧文件</button>
+      </div>
+      <div class="omx-vdec-controls" id="c2-vdec-controls" aria-label="C2 调试开关"></div>
+      <div class="omx-vdec-previews" id="c2-vdec-previews" hidden></div>
+      <div class="omx-vdec-list" id="c2-vdec-list">
+        <p class="omx-vdec-empty">等待采样…</p>
+      </div>
+      <p class="omx-vdec-status" id="c2-vdec-status">等待操作</p>
     </div>
   </template>
 
@@ -468,7 +480,7 @@
   <script src="{{ url_for('static', filename='js/sf-frametimeline.js') }}"></script>
   <script src="{{ url_for('static', filename='js/meminfo.js') }}"></script>
   <script src="{{ url_for('static', filename='js/diskstats.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/omx-vdec.js') }}?v=omxsnap15"></script>
+  <script src="{{ url_for('static', filename='js/omx-vdec.js') }}?v=omxsnap19"></script>
   <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>

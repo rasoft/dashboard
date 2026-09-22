@@ -304,7 +304,8 @@ body {
 .panel[data-panel-id="hwc"] .panel-body,
 .panel[data-panel-id="hwc-status"] .panel-body,
 .panel[data-panel-id="sf-frametimeline"] .panel-body,
-.panel[data-panel-id="omx-vdec"] .panel-body {
+.panel[data-panel-id="omx-vdec"] .panel-body,
+.panel[data-panel-id="c2-vdec"] .panel-body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -313,7 +314,8 @@ body {
 .panel[data-panel-id="hwc"] .panel-body > .hwc,
 .panel[data-panel-id="hwc-status"] .panel-body > .hwc-st,
 .panel[data-panel-id="sf-frametimeline"] .panel-body > .sf-ftl,
-.panel[data-panel-id="omx-vdec"] .panel-body > .omx-vdec {
+.panel[data-panel-id="omx-vdec"] .panel-body > .omx-vdec,
+.panel[data-panel-id="c2-vdec"] .panel-body > .omx-vdec {
   flex: 1 1 auto;
   min-height: 0;
 }

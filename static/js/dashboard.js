@@ -90,12 +90,23 @@ const PANEL_DEFS = {
   },
   "omx-vdec": {
     id: "omx-vdec",
-    title: "OMX/C2 - VDEC",
+    title: "OMX - VDEC",
     w: 7,
     h: 14,
     minW: 2,
     minH: 4,
     x: 6,
+    y: 18,
+    defaultOpen: false,
+  },
+  "c2-vdec": {
+    id: "c2-vdec",
+    title: "C2 - VDEC",
+    w: 7,
+    h: 14,
+    minW: 2,
+    minH: 4,
+    x: 13,
     y: 18,
     defaultOpen: false,
   },
@@ -625,6 +636,8 @@ const Dashboard = (() => {
       body.appendChild(cloneTemplate("tpl-hwc-status"));
     } else if (panelId === "omx-vdec") {
       body.appendChild(cloneTemplate("tpl-omx-vdec"));
+    } else if (panelId === "c2-vdec") {
+      body.appendChild(cloneTemplate("tpl-c2-vdec"));
     } else if (panelId === "sf-events") {
       body.appendChild(cloneTemplate("tpl-sf-events"));
       const actions = panel.querySelector(".panel-actions");
@@ -740,6 +753,9 @@ const Dashboard = (() => {
     if (panelId === "omx-vdec" && window.OmxVdecPanel) {
       window.OmxVdecPanel.mount(panelEl);
     }
+    if (panelId === "c2-vdec" && window.C2VdecPanel) {
+      window.C2VdecPanel.mount(panelEl);
+    }
     if (panelId === "sf-events" && window.SfEventsPanel) {
       window.SfEventsPanel.mount(panelEl);
     }
@@ -786,6 +802,9 @@ const Dashboard = (() => {
     }
     if (panelId === "omx-vdec" && window.OmxVdecPanel?.unmount) {
       window.OmxVdecPanel.unmount();
+    }
+    if (panelId === "c2-vdec" && window.C2VdecPanel?.unmount) {
+      window.C2VdecPanel.unmount();
     }
     if (panelId === "sf-events" && window.SfEventsPanel?.unmount) {
       window.SfEventsPanel.unmount();
@@ -848,21 +867,6 @@ const Dashboard = (() => {
       const res = await fetch("/api/status");
       const data = await res.json();
       updatePill("status-adb", data.adb?.available, data.adb?.selected?.serial || "无设备");
-      const codec = data.codec;
-      if (!data.adb?.available) {
-        updatePill("status-codec", false, "无设备");
-      } else if (codec?.ok) {
-        updatePill("status-codec", true, codec.label || codec.current || "已探测");
-        const bits = [];
-        if (codec.preferred) bits.push("prefer " + String(codec.preferred).toUpperCase());
-        if (codec.ccodec != null && codec.ccodec !== "") bits.push("ccodec=" + codec.ccodec);
-        if (codec.c2_hal) bits.push("hal=" + codec.c2_hal);
-        if (codec.codecs?.length) bits.push(codec.codecs.join(", "));
-        const codecEl = document.getElementById("status-codec");
-        if (codecEl) codecEl.title = bits.join(" · ");
-      } else {
-        updatePill("status-codec", false, codec?.label || codec?.error || "探测失败");
-      }
       let hdmiName = "未检测到采集卡";
       if (data.hdmi?.video?.device) {
         const name = data.hdmi.video.name || "采集卡";
@@ -873,7 +877,6 @@ const Dashboard = (() => {
       updatePill("status-hdmi", data.hdmi?.available, hdmiName);
     } catch (err) {
       updatePill("status-adb", false, "状态获取失败");
-      updatePill("status-codec", false, "状态获取失败");
       updatePill("status-hdmi", false, "状态获取失败");
     }
   }

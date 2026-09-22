@@ -1,10 +1,11 @@
-"""OMX video decoder debug status via ADB (device JSON snapshot).
+"""OMX/C2 video decoder debug status via ADB.
 
-Hot path: a single background thread pulls with `adb exec-out cat` into an
-in-memory cache. HTTP handlers only read the cache, so the UI is not blocked
-by 2–3s ADB latency and concurrent browser polls do not stack ADB calls.
+OMX status is still a JSON file under /data/vendor/media (needs adb root to
+read). C2 status is `dumpsys android.hardware.media.c2.IComponentStore/default`
+and does not need root. DumpFrame YUV pulls still need root for both stacks.
 
-Also exposes a small allowlist of persist.vendor.omx.* debug controls.
+A background thread fills an in-memory cache so HTTP handlers are not blocked
+by ADB latency.
 """
 
 from __future__ import annotations
@@ -26,9 +27,9 @@ logger = logging.getLogger(__name__)
 STATUS_PATH_DEFAULT = "/data/vendor/media/omx_vdec_status.json"
 ENABLE_PROP = "persist.vendor.omx.vdec.debug"
 JSON_PATH_PROP = "persist.vendor.omx.vdec.debug.json"
-C2_STATUS_PATH_DEFAULT = "/data/vendor/media/c2_vdec_status.json"
-C2_ENABLE_PROP = "persist.vendor.codec2.vdec.debug"
-C2_JSON_PATH_PROP = "persist.vendor.codec2.vdec.debug.json"
+C2_DUMPSYS_CMD = "dumpsys android.hardware.media.c2.IComponentStore/default"
+C2_DUMPSYS_MARKER = "--- NC C2 VDEC status ---"
+C2_NO_USERDEBUG_HINT = "C2 状态经 dumpsys 读取，开播后即有实例（不需要 userdebug / root）"
 C2_DUMPFRAME_EN_PROP = "persist.vendor.codec2.dumpframe.en"
 OMX_DUMPFRAME_EN_PROP = "persist.vendor.omx.dumpframe.en"
 DUMPFRAME_DIR = "/data/vendor/media"
@@ -155,15 +156,6 @@ CONTROLS: list[dict[str, Any]] = [
         "hint": "策略开关；新建 Codec2 decoder 后生效",
     },
     {
-        "id": "c2_vdec_debug",
-        "prop": C2_ENABLE_PROP,
-        "type": "bool",
-        "label": "C2 Status",
-        "group": "C2",
-        "default_on": False,
-        "hint": "状态 JSON 导出；需重新开播才会 register。无文件则需 userdebug 且已编进 C2_VDEC_DEBUG_STATUS",
-    },
-    {
         "id": "c2_dumpframe",
         "prop": C2_DUMPFRAME_EN_PROP,
         "type": "bool",
@@ -193,6 +185,8 @@ _cache: dict[str, Any] = {
 }
 _cache_mono = 0.0
 _last_client_mono = 0.0
+_omx_client_mono = 0.0
+_c2_client_mono = 0.0
 
 _poller_lock = threading.Lock()
 _poller_thread: threading.Thread | None = None
@@ -200,8 +194,8 @@ _poller_stop = threading.Event()
 
 _cached_enabled = ""
 _cached_path = STATUS_PATH_DEFAULT
-_cached_c2_enabled = ""
-_cached_c2_path = C2_STATUS_PATH_DEFAULT
+_cached_c2_enabled = "1"
+_cached_c2_path = C2_DUMPSYS_CMD
 _cached_controls: list[dict[str, Any]] = []
 _last_prop_mono = 0.0
 
@@ -275,6 +269,11 @@ def _normalize_set_value(ctrl: dict[str, Any], value: Any) -> str | None:
     return text
 
 
+def _filter_controls(controls: list[dict[str, Any]], src: str) -> list[dict[str, Any]]:
+    group = "C2" if src == "c2" else "OMX"
+    return [c for c in controls if (c.get("group") or group) == group]
+
+
 def _build_controls(raw_map: dict[str, str]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for ctrl in CONTROLS:
@@ -314,13 +313,12 @@ def _build_controls(raw_map: dict[str, str]) -> list[dict[str, Any]]:
 
 
 def _refresh_props(*, force: bool = False) -> None:
-    global _cached_enabled, _cached_path, _cached_c2_enabled, _cached_c2_path
-    global _cached_controls, _last_prop_mono
+    global _cached_enabled, _cached_path, _cached_controls, _last_prop_mono
     now = time.monotonic()
     if not force and _last_prop_mono and (now - _last_prop_mono) < _PROP_REFRESH_S:
         return
 
-    props = list(dict.fromkeys([*_CONTROL_PROPS, JSON_PATH_PROP, C2_JSON_PATH_PROP]))
+    props = list(dict.fromkeys([*_CONTROL_PROPS, JSON_PATH_PROP]))
     script = " ; ".join(f'echo "__P__|{p}|$(getprop {p})"' for p in props)
     raw_map: dict[str, str] = {}
     try:
@@ -336,22 +334,27 @@ def _refresh_props(*, force: bool = False) -> None:
 
     _cached_enabled = raw_map.get(ENABLE_PROP, _cached_enabled)
     _cached_path = raw_map.get(JSON_PATH_PROP) or STATUS_PATH_DEFAULT
-    _cached_c2_enabled = raw_map.get(C2_ENABLE_PROP, _cached_c2_enabled)
-    _cached_c2_path = raw_map.get(C2_JSON_PATH_PROP) or C2_STATUS_PATH_DEFAULT
     _cached_controls = _build_controls(raw_map)
     _last_prop_mono = now
 
 
-def list_controls() -> dict[str, Any]:
+def list_controls(*, src: str | None = None) -> dict[str, Any]:
     _refresh_props(force=True)
-    return {"ok": True, "controls": list(_cached_controls)}
+    controls = list(_cached_controls)
+    if src in ("omx", "c2"):
+        controls = _filter_controls(controls, src)
+    return {"ok": True, "controls": controls, "src": src or ""}
 
 
-def set_control(control_id: str, value: Any) -> dict[str, Any]:
-    """Set one allowlisted OMX debug prop on device."""
+def set_control(control_id: str, value: Any, *, src: str | None = None) -> dict[str, Any]:
+    """Set one allowlisted OMX/C2 debug prop on device."""
     ctrl = _CONTROL_BY_ID.get(control_id)
     if ctrl is None:
         return {"ok": False, "error": f"unknown control: {control_id}"}
+    if src in ("omx", "c2"):
+        group = "C2" if src == "c2" else "OMX"
+        if (ctrl.get("group") or group) != group:
+            return {"ok": False, "error": f"{control_id} is not a {group} control"}
 
     normalized = _normalize_set_value(ctrl, value)
     if normalized is None:
@@ -382,13 +385,16 @@ def set_control(control_id: str, value: Any) -> dict[str, Any]:
         pass
 
     matched = next((c for c in _cached_controls if c["id"] == control_id), None)
+    controls = list(_cached_controls)
+    if src in ("omx", "c2"):
+        controls = _filter_controls(controls, src)
     return {
         "ok": True,
         "id": control_id,
         "prop": prop,
         "value": normalized,
         "control": matched,
-        "controls": list(_cached_controls),
+        "controls": controls,
         "hint": ctrl.get("hint", ""),
         "steps": root.get("steps"),
     }
@@ -436,9 +442,19 @@ def _yuv_preview_jpeg(data: bytes, meta: dict[str, Any]) -> str | None:
     return base64.b64encode(buf.tobytes()).decode("ascii")
 
 
-def _list_snap_json_paths() -> list[str]:
+def _dumpframe_globs(src: str | None, *, json_only: bool = False) -> str:
+    suffix = ".json" if json_only else ""
+    names: list[str] = []
+    if src in (None, "omx"):
+        names.append(f"{DUMPFRAME_DIR}/omx_last_frame.V*{suffix}")
+    if src in (None, "c2"):
+        names.append(f"{DUMPFRAME_DIR}/c2_last_frame.V*{suffix}")
+    return " ".join(names)
+
+
+def _list_snap_json_paths(src: str | None = None) -> list[str]:
     result = adb.run_shell(
-        f"ls {DUMPFRAME_DIR}/omx_last_frame.V*.json {DUMPFRAME_DIR}/c2_last_frame.V*.json 2>/dev/null",
+        f"ls {_dumpframe_globs(src, json_only=True)} 2>/dev/null",
         timeout=4.0,
     )
     paths: list[str] = []
@@ -538,7 +554,7 @@ def pull_latest_snaps(*, src: str | None = None) -> dict[str, Any]:
     want = (src or "").strip().lower()
     live = _live_snap_ids(want or None)
     found: list[dict[str, Any]] = []
-    for path in _list_snap_json_paths():
+    for path in _list_snap_json_paths(want or None):
         named = _SNAP_NAME_RE.search(path)
         if named:
             isrc, lid = named.group(1), int(named.group(2))
@@ -572,9 +588,9 @@ def pull_latest_snaps(*, src: str | None = None) -> dict[str, Any]:
     }
 
 
-def _list_dumpframe_paths() -> list[str]:
+def _list_dumpframe_paths(src: str | None = None) -> list[str]:
     result = adb.run_shell(
-        f"ls {DUMPFRAME_DIR}/omx_last_frame.V* {DUMPFRAME_DIR}/c2_last_frame.V* 2>/dev/null",
+        f"ls {_dumpframe_globs(src, json_only=False)} 2>/dev/null",
         timeout=4.0,
     )
     paths: list[str] = []
@@ -587,8 +603,8 @@ def _list_dumpframe_paths() -> list[str]:
     return paths
 
 
-def clear_debug_temps() -> dict[str, Any]:
-    """Delete OMX/C2 dumpframe leftovers under /data/vendor/media (engineers, rooted)."""
+def clear_debug_temps(*, src: str | None = None) -> dict[str, Any]:
+    """Delete dumpframe leftovers under /data/vendor/media (engineers, rooted)."""
     status = adb.get_status()
     if not status["available"]:
         return {"ok": False, "error": "no adb device online"}
@@ -597,10 +613,10 @@ def clear_debug_temps() -> dict[str, Any]:
     if not root.get("ok"):
         return root
 
-    before = _list_dumpframe_paths()
+    before = _list_dumpframe_paths(src)
     try:
         result = adb.run_shell(
-            f"rm -f {DUMPFRAME_DIR}/omx_last_frame.V* {DUMPFRAME_DIR}/c2_last_frame.V*",
+            f"rm -f {_dumpframe_globs(src, json_only=False)}",
             timeout=8.0,
         )
     except Exception as exc:
@@ -610,7 +626,7 @@ def clear_debug_temps() -> dict[str, Any]:
         err = (result.stderr or result.stdout or "rm failed").strip()
         return {"ok": False, "error": err, "removed": 0, "steps": root.get("steps")}
 
-    leftover = _list_dumpframe_paths()
+    leftover = _list_dumpframe_paths(src)
     return {
         "ok": True,
         "removed": max(0, len(before) - len(leftover)),
@@ -626,21 +642,40 @@ def _attach_controls(payload: dict[str, Any]) -> dict[str, Any]:
     out["enabled"] = _cached_enabled
     out["c2_enabled"] = _cached_c2_enabled
     out["path"] = out.get("path") or _cached_path or STATUS_PATH_DEFAULT
-    out["c2_path"] = out.get("c2_path") or _cached_c2_path or C2_STATUS_PATH_DEFAULT
+    out["c2_path"] = out.get("c2_path") or C2_DUMPSYS_CMD
     return out
+
+
+def _c2_sanitize_text(text: str, *, fallback: str = "") -> str:
+    """Drop leftover HAL/dashboard copy that still tells C2 users they need userdebug."""
+    s = (text or "").strip()
+    if not s:
+        return fallback
+    low = s.lower()
+    if (
+        "userdebug" in low
+        or "c2_vdec_debug_status" in low
+        or "not compiled" in low
+        or "编进" in s
+        or "调试导出" in s
+    ):
+        return fallback or C2_NO_USERDEBUG_HINT
+    return s
 
 
 def _parse_json_body(raw: str, *, enabled: str, path: str, src: str = "omx") -> dict[str, Any]:
     text = (raw or "").strip()
     if not text:
         hint = ""
-        if enabled not in ("1", "true"):
-            hint = f"请先打开 Status（{ENABLE_PROP}=1 或 {C2_ENABLE_PROP}=1），并重新开播"
+        if src == "c2":
+            hint = C2_NO_USERDEBUG_HINT
+        elif enabled not in ("1", "true"):
+            hint = f"请先打开 Status（{ENABLE_PROP}=1），并重新开播"
         else:
-            hint = "调试已开但尚无状态文件：需 userdebug OMX/Codec2 构建，且至少创建过一个 decoder"
+            hint = "调试已开但尚无状态文件：需 userdebug OMX 构建，且至少创建过一个 decoder"
         return {
             "ok": False,
-            "error": "无法读取状态文件（空）",
+            "error": "无法读取 dumpsys 状态（空）" if src == "c2" else "无法读取状态文件（空）",
             "hint": hint,
             "path": path,
             "enabled": enabled,
@@ -651,7 +686,11 @@ def _parse_json_body(raw: str, *, enabled: str, path: str, src: str = "omx") -> 
         return {
             "ok": False,
             "error": "permission denied",
-            "hint": "打开 Status 或手动 adb root 后再试",
+            "hint": (
+                "shell 无法 dumpsys C2 HAL（DUMP 权限）"
+                if src == "c2"
+                else "打开 Status 或手动 adb root 后再试"
+            ),
             "path": path,
             "enabled": enabled,
             "permission_denied": True,
@@ -660,7 +699,11 @@ def _parse_json_body(raw: str, *, enabled: str, path: str, src: str = "omx") -> 
         return {
             "ok": False,
             "error": text[:200],
-            "hint": "尚无状态文件：确认 Status 已开并重新开播",
+            "hint": (
+                "dumpsys 无 C2 VDEC 段：确认已开播"
+                if src == "c2"
+                else "尚无状态文件：确认 Status 已开并重新开播"
+            ),
             "path": path,
             "enabled": enabled,
         }
@@ -679,7 +722,7 @@ def _parse_json_body(raw: str, *, enabled: str, path: str, src: str = "omx") -> 
     if not isinstance(payload, dict):
         return {
             "ok": False,
-            "error": "状态文件根节点不是 object",
+            "error": "状态根节点不是 object" if src == "c2" else "状态文件根节点不是 object",
             "path": path,
             "enabled": enabled,
         }
@@ -723,22 +766,88 @@ def _cat_status_file(path: str) -> tuple[str, str]:
     return raw, err
 
 
+def _c2_dumpsys_json() -> tuple[str, str]:
+    """Pull C2 VDEC JSON from HAL dump. No adb root."""
+    try:
+        result = adb.run_shell(C2_DUMPSYS_CMD, timeout=6.0)
+    except Exception as exc:
+        return "", str(exc)
+    text = result.stdout or ""
+    err = (result.stderr or "").strip()
+    if result.returncode != 0 and not text.strip():
+        return "", err or "dumpsys failed"
+    lower = text.lower()
+    if "permission denied" in lower and C2_DUMPSYS_MARKER not in text:
+        return "", "permission denied"
+    idx = text.find(C2_DUMPSYS_MARKER)
+    if idx < 0:
+        return "", "dumpsys 无 C2 VDEC 段（开播后才会 register）"
+    body = text[idx + len(C2_DUMPSYS_MARKER) :]
+    start = body.find("{")
+    if start < 0:
+        return "", "尚无 C2 dumpsys JSON（开播后即有）"
+    decoder = json.JSONDecoder()
+    try:
+        _obj, end = decoder.raw_decode(body[start:])
+    except json.JSONDecodeError as exc:
+        return "", f"JSON 解析失败: {exc}"
+    return body[start : start + end], ""
+
+
+def _client_live(stamp: float) -> bool:
+    return bool(stamp) and (time.monotonic() - stamp) < _IDLE_STOP_S
+
+
 def _pull_once() -> dict[str, Any]:
-    """Fast device read: prefer `adb exec-out cat` (no PTY), fallback to shell."""
+    """OMX: cat status file (may need root). C2: dumpsys (no root)."""
     _refresh_props(force=False)
     omx_path = _cached_path or STATUS_PATH_DEFAULT
-    c2_path = _cached_c2_path or C2_STATUS_PATH_DEFAULT
+    c2_path = C2_DUMPSYS_CMD
     omx_enabled = _cached_enabled
     c2_enabled = _cached_c2_enabled
     t0 = time.monotonic()
+    omx_live = _client_live(_omx_client_mono)
 
-    omx_raw, omx_err = _cat_status_file(omx_path)
-    c2_raw, c2_err = _cat_status_file(c2_path)
-    if omx_err and not omx_raw.strip() and c2_err and not c2_raw.strip():
+    if omx_live:
+        omx_raw, omx_err = _cat_status_file(omx_path)
+        omx_parsed = _parse_json_body(omx_raw, enabled=omx_enabled, path=omx_path, src="omx")
+        if omx_parsed.get("permission_denied"):
+            root = _ensure_root(force=False)
+            if root.get("ok") and not root.get("skipped"):
+                omx_raw, omx_err = _cat_status_file(omx_path)
+                omx_parsed = _parse_json_body(
+                    omx_raw, enabled=omx_enabled, path=omx_path, src="omx"
+                )
+    else:
+        omx_err = ""
+        omx_parsed = {
+            "ok": False,
+            "error": "",
+            "path": omx_path,
+            "enabled": omx_enabled,
+            "instances": [],
+        }
+
+    c2_raw, c2_err = _c2_dumpsys_json()
+    if c2_raw.strip():
+        c2_parsed = _parse_json_body(c2_raw, enabled=c2_enabled, path=c2_path, src="c2")
+    else:
+        c2_parsed = _parse_json_body("", enabled=c2_enabled, path=c2_path, src="c2")
+        if c2_err:
+            c2_parsed["error"] = _c2_sanitize_text(
+                c2_err, fallback="尚无 C2 dumpsys 状态"
+            )
+            if "permission denied" in c2_err.lower():
+                c2_parsed["permission_denied"] = True
+                c2_parsed["hint"] = "shell 无法 dumpsys C2 HAL（DUMP 权限）"
+            else:
+                c2_parsed["hint"] = C2_NO_USERDEBUG_HINT
+
+    if omx_live and omx_err and not (omx_parsed.get("instances") or []) and not c2_raw.strip():
         return _attach_controls(
             {
                 "ok": False,
-                "error": omx_err or c2_err,
+                "error": omx_err or c2_err or omx_parsed.get("error") or "无状态",
                 "path": omx_path,
                 "c2_path": c2_path,
                 "enabled": omx_enabled,
@@ -746,14 +855,6 @@ def _pull_once() -> dict[str, Any]:
                 "adb_ms": int((time.monotonic() - t0) * 1000),
             }
         )
-
-    omx_parsed = _parse_json_body(omx_raw, enabled=omx_enabled, path=omx_path, src="omx")
-    c2_parsed = _parse_json_body(c2_raw, enabled=c2_enabled, path=c2_path, src="c2")
-
-    if omx_parsed.get("permission_denied") or c2_parsed.get("permission_denied"):
-        root = _ensure_root(force=False)
-        if root.get("ok") and not root.get("skipped"):
-            return _pull_once()
 
     omx_instances = list(omx_parsed.get("instances") or []) if omx_parsed.get("ok") else []
     c2_instances = list(c2_parsed.get("instances") or []) if c2_parsed.get("ok") else []
@@ -795,7 +896,7 @@ def _pull_once() -> dict[str, Any]:
     parsed["omx_ok"] = bool(omx_parsed.get("ok"))
     parsed["c2_ok"] = bool(c2_parsed.get("ok"))
     parsed["omx_error"] = omx_parsed.get("error") or ""
-    parsed["c2_error"] = c2_parsed.get("error") or ""
+    parsed["c2_error"] = _c2_sanitize_text(c2_parsed.get("error") or "")
     parsed["omx_instance_count"] = len(omx_instances)
     parsed["c2_instance_count"] = len(c2_instances)
     parsed["adb_ms"] = int((time.monotonic() - t0) * 1000)
@@ -862,29 +963,66 @@ def _ensure_poller(app) -> None:
         thread.start()
 
 
-def _status_empty_hint(payload: dict[str, Any]) -> str:
-    """Hint only when a live player exists but the debug JSON has no cards."""
+def _status_empty_hint(payload: dict[str, Any], *, src: str | None = None) -> str:
+    """Per-panel empty copy. Do not mention the other codec stack."""
     existing = (payload.get("hint") or "").strip()
-    stack = payload.get("codec_stack") or {}
-    playing = stack.get("playing")
-    c2_on = _prop_on(str(payload.get("c2_enabled") or ""), False)
     omx_on = _prop_on(str(payload.get("enabled") or ""), False)
-    c2_count = int(payload.get("c2_instance_count") or 0)
-    omx_count = int(payload.get("omx_instance_count") or 0)
-
-    if playing in ("c2", "both") and c2_count == 0:
-        if not c2_on:
-            return "正在播 C2，打开 C2 Status 后当前播放就会出实例。"
-        return existing or "正在播 C2，但还没有 c2_vdec_status.json（需 userdebug 且已编进调试导出）。"
-    if playing == "omx" and omx_count == 0:
-        if not omx_on:
-            return "正在播 OMX，打开 OMX Status 后重新开播才会出实例。"
-        return existing or "正在播 OMX，但还没有状态实例。"
+    count = int(payload.get("instance_count") or 0)
+    if src == "c2":
+        if count == 0:
+            return _c2_sanitize_text(existing, fallback=C2_NO_USERDEBUG_HINT)
+        return _c2_sanitize_text(existing)
+    if src == "omx":
+        if count == 0:
+            if not omx_on:
+                return "打开 OMX Status 后重新开播才会出实例。"
+            return existing or "尚无 OMX 状态实例。"
+        return existing
     return existing
 
 
-def sample() -> dict[str, Any]:
-    """Return latest cached OMX status; keep background poller alive."""
+def _project(payload: dict[str, Any], src: str) -> dict[str, Any]:
+    """Slice merged poller cache into an OMX-only or C2-only panel payload."""
+    out = dict(payload)
+    out["src"] = src
+    instances = [
+        i
+        for i in (out.get("instances") or [])
+        if isinstance(i, dict) and str(i.get("src") or "omx") == src
+    ]
+    out["instances"] = instances
+    out["instance_count"] = len(instances)
+    out["controls"] = _filter_controls(out.get("controls") or [], src)
+    if src == "c2":
+        out["ok"] = bool(out.get("c2_ok") or instances)
+        if not out["ok"]:
+            out["error"] = _c2_sanitize_text(
+                out.get("c2_error") or out.get("error") or "",
+                fallback=C2_NO_USERDEBUG_HINT,
+            )
+        out["enabled"] = "1"
+        out["c2_enabled"] = "1"
+        out["path"] = C2_DUMPSYS_CMD
+        out["c2_path"] = C2_DUMPSYS_CMD
+        out["status_path"] = C2_DUMPSYS_CMD
+    else:
+        out["ok"] = bool(out.get("omx_ok") or instances)
+        if not out["ok"]:
+            out["error"] = out.get("omx_error") or out.get("error") or "无状态"
+    hint = _status_empty_hint(out, src=src)
+    if hint:
+        out["hint"] = hint
+    return out
+
+
+def sample(*, src: str | None = None) -> dict[str, Any]:
+    """Return latest cached status; keep background poller alive."""
+    global _omx_client_mono, _c2_client_mono
+    now = time.monotonic()
+    if src == "omx":
+        _omx_client_mono = now
+    elif src == "c2":
+        _c2_client_mono = now
     app = current_app._get_current_object()
     _ensure_poller(app)
 
@@ -906,42 +1044,8 @@ def sample() -> dict[str, Any]:
         payload = _attach_controls(payload)
     payload["cache_age_ms"] = age_ms
     payload["poll_target_ms"] = int(_POLL_TARGET_S * 1000)
-    try:
-        from app.services import codec_stack
-
-        payload["codec_stack"] = codec_stack.probe()
-    except Exception:
-        payload["codec_stack"] = None
-    stack = dict(payload.get("codec_stack") or {})
-    c2_n = int(payload.get("c2_instance_count") or 0)
-    omx_n = int(payload.get("omx_instance_count") or 0)
-    if c2_n and omx_n:
-        live = "both"
-    elif c2_n:
-        live = "c2"
-    elif omx_n:
-        live = "omx"
-    else:
-        live = None
-    if live:
-        stack["playing"] = live
-        stack["current"] = live
-        stack["label"] = {
-            "c2": "C2 播放中",
-            "omx": "OMX 播放中",
-            "both": "C2+OMX 播放中",
-        }[live]
-        payload["codec_stack"] = stack
-    playing = stack.get("playing")
-    instances = list(payload.get("instances") or [])
-    if playing == "c2":
-        instances = [i for i in instances if i.get("src") == "c2"]
-        payload["instances"] = instances
-        payload["instance_count"] = len(instances)
-    elif playing == "omx":
-        instances = [i for i in instances if i.get("src") != "c2"]
-        payload["instances"] = instances
-        payload["instance_count"] = len(instances)
+    if src in ("omx", "c2"):
+        return _project(payload, src)
     hint = _status_empty_hint(payload)
     if hint:
         payload["hint"] = hint

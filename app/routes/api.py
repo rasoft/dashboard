@@ -6,7 +6,6 @@ from app.services import (
     adb,
     bandwidth,
     capture,
-    codec_stack,
     ddr_bw,
     delay_export,
     diskstats,
@@ -27,7 +26,6 @@ def status():
     return jsonify(
         {
             "adb": adb.get_status(),
-            "codec": codec_stack.probe(),
             "hdmi": capture.get_capture_status(),
             "serial": {"ports": capture.discover_serial_ports()},
             "hdmi_session": {
@@ -222,7 +220,7 @@ def proc_diskstats_map():
 
 @api_bp.get("/omx/vdec")
 def omx_vdec_sample():
-    result = omx_vdec.sample()
+    result = omx_vdec.sample(src="omx")
     status = 200 if result.get("ok") else 400
     return jsonify(result), status
 
@@ -236,7 +234,7 @@ def omx_vdec_enable():
 
 @api_bp.get("/omx/controls")
 def omx_controls_list():
-    result = omx_vdec.list_controls()
+    result = omx_vdec.list_controls(src="omx")
     status = 200 if result.get("ok") else 400
     return jsonify(result), status
 
@@ -248,23 +246,63 @@ def omx_controls_set():
     value = data.get("value")
     if "on" in data and value is None:
         value = data.get("on")
-    result = omx_vdec.set_control(str(control_id), value)
+    result = omx_vdec.set_control(str(control_id), value, src="omx")
     status = 200 if result.get("ok") else 400
     return jsonify(result), status
 
 
 @api_bp.get("/omx/vdec/preview")
 def omx_vdec_preview():
-    src = (request.args.get("src") or "").strip().lower() or None
-    if src not in (None, "c2", "omx"):
-        return jsonify({"ok": False, "error": "src must be c2 or omx"}), 400
-    result = omx_vdec.pull_latest_snaps(src=src)
+    src = (request.args.get("src") or "omx").strip().lower() or "omx"
+    if src != "omx":
+        return jsonify({"ok": False, "error": "omx preview src must be omx"}), 400
+    result = omx_vdec.pull_latest_snaps(src="omx")
     status = 200 if result.get("ok") else 400
     return jsonify(result), status
 
 
 @api_bp.post("/omx/vdec/clear-temps")
 def omx_vdec_clear_temps():
-    result = omx_vdec.clear_debug_temps()
+    result = omx_vdec.clear_debug_temps(src="omx")
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.get("/c2/vdec")
+def c2_vdec_sample():
+    result = omx_vdec.sample(src="c2")
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.get("/c2/controls")
+def c2_controls_list():
+    result = omx_vdec.list_controls(src="c2")
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.post("/c2/controls")
+def c2_controls_set():
+    data = request.get_json(silent=True) or {}
+    control_id = data.get("id") or data.get("control") or ""
+    value = data.get("value")
+    if "on" in data and value is None:
+        value = data.get("on")
+    result = omx_vdec.set_control(str(control_id), value, src="c2")
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.get("/c2/vdec/preview")
+def c2_vdec_preview():
+    result = omx_vdec.pull_latest_snaps(src="c2")
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.post("/c2/vdec/clear-temps")
+def c2_vdec_clear_temps():
+    result = omx_vdec.clear_debug_temps(src="c2")
     status = 200 if result.get("ok") else 400
     return jsonify(result), status

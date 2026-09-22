@@ -1,5 +1,11 @@
-window.OmxVdecPanel = (() => {
+function createVdecPanel(cfg) {
   // UI reads an in-memory cache; device ADB runs on a backend poller (~350ms target).
+  const STACK = cfg.stack;
+  const GROUP = cfg.group;
+  const STATUS_ID = cfg.statusId;
+  const DUMPFRAME_ID = cfg.dumpframeId;
+  const IDS = cfg.ids;
+  const API = cfg.api;
   const POLL_MS = 400;
 
   let root = null;
@@ -8,7 +14,6 @@ window.OmxVdecPanel = (() => {
   let fetching = false;
   let setting = false;
   let lastControlsKey = "";
-  let lastStack = null;
   let didAutoEnableStatus = false;
   let lastSnaps = {};
   let eosHoldAnchor = {};
@@ -17,12 +22,12 @@ window.OmxVdecPanel = (() => {
 
   function els() {
     return {
-      meta: root?.querySelector("#omx-vdec-meta"),
-      list: root?.querySelector("#omx-vdec-list"),
-      status: root?.querySelector("#omx-vdec-status"),
-      controls: root?.querySelector("#omx-vdec-controls"),
-      previews: root?.querySelector("#omx-vdec-previews"),
-      clearTemps: root?.querySelector("#omx-vdec-clear-temps"),
+      meta: root?.querySelector(IDS.meta),
+      list: root?.querySelector(IDS.list),
+      status: root?.querySelector(IDS.status),
+      controls: root?.querySelector(IDS.controls),
+      previews: root?.querySelector(IDS.previews),
+      clearTemps: root?.querySelector(IDS.clearTemps),
     };
   }
 
@@ -144,7 +149,7 @@ window.OmxVdecPanel = (() => {
 
   function snapKey(instOrFrame) {
     if (instOrFrame == null) return "";
-    const src = instOrFrame.src || "omx";
+    const src = instOrFrame.src || STACK;
     if (instOrFrame.log_id != null && instOrFrame.log_id !== "") {
       return `${src}:${instOrFrame.log_id}`;
     }
@@ -178,7 +183,7 @@ window.OmxVdecPanel = (() => {
   }
 
   function frameTitle(f) {
-    const stackSrc = (f.src || "omx").toUpperCase();
+    const stackSrc = (f.src || STACK).toUpperCase();
     return `${stackSrc} V${f.log_id ?? snapKey(f)} ${f.w}×${f.h} ${f.format || ""} ${
       f.size || f.yuv_bytes || ""
     }B`.replace(/\s+/g, " ").trim();
@@ -321,7 +326,7 @@ window.OmxVdecPanel = (() => {
     if (s.error) {
       return row("末帧", esc(s.error));
     }
-    return row("末帧", "打开 OMX/C2 DumpFrame 并重新开播后约每秒更新预览");
+    return row("末帧", `打开 ${GROUP} DumpFrame 并重新开播后约每秒更新预览`);
   }
 
   function row(th, td) {
@@ -362,7 +367,7 @@ window.OmxVdecPanel = (() => {
       : "";
 
     const srcChip =
-      inst.src === "c2"
+      (inst.src || STACK) === "c2"
         ? '<span class="omx-vdec-chip">C2</span>'
         : '<span class="omx-vdec-chip muted">OMX</span>';
 
@@ -381,7 +386,7 @@ window.OmxVdecPanel = (() => {
           ${row(
             "运行",
             `${yn(inst.running)} / vdec=${esc(inst.vdec_state)} / ${
-              inst.src === "c2" ? "mode" : "omx"
+              (inst.src || STACK) === "c2" ? "mode" : "omx"
             }=${esc(inst.omx_state)}`
           )}
           ${row("用途", usageText(u))}
@@ -452,26 +457,14 @@ window.OmxVdecPanel = (() => {
       .join("|");
   }
 
-  function visibleControlGroups(stack) {
-    const playing = stack?.playing;
-    const preferred = stack?.preferred;
-    const current = stack?.current;
-    const installed = stack?.installed || [];
-    if (playing === "both") return ["OMX", "C2"];
-    if (playing === "c2") return ["C2"];
-    if (playing === "omx") return ["OMX"];
-    if (preferred === "c2" || current === "c2") return ["C2"];
-    if (preferred === "omx" || current === "omx") return ["OMX"];
-    if (installed.length === 1) {
-      return installed[0] === "c2" ? ["C2"] : ["OMX"];
-    }
-    return ["OMX", "C2"];
+  function visibleControlGroups() {
+    return [GROUP];
   }
 
-  function renderControls(controls, stack) {
+  function renderControls(controls) {
     const { controls: host } = els();
     if (!host) return;
-    const groups = visibleControlGroups(stack || lastStack);
+    const groups = visibleControlGroups();
     const filtered = (controls || []).filter((ctrl) => {
       const group = ctrl.group || "";
       return !group || groups.indexOf(group) >= 0;
@@ -530,8 +523,7 @@ window.OmxVdecPanel = (() => {
   function render(data) {
     const { list } = els();
     if (!list) return;
-    lastStack = data.codec_stack || lastStack;
-    renderControls(data.controls || [], lastStack);
+    renderControls(data.controls || []);
 
     const instances = data.instances || [];
     const dropped = instances.length ? pruneSnaps(liveSnapKeys(instances)) : {};
@@ -540,17 +532,10 @@ window.OmxVdecPanel = (() => {
     const statusOn =
       data.enabled === "1" ||
       data.enabled === "true" ||
-      data.c2_enabled === "1" ||
-      data.c2_enabled === "true" ||
-      !!(data.controls || []).find(
-        (c) => (c.id === "vdec_debug" || c.id === "c2_vdec_debug") && c.on
-      );
+      !!(data.controls || []).find((c) => c.id === STATUS_ID && c.on);
     const n = data.instance_count ?? instances.length;
-    const stackLabel = data.codec_stack?.label
-      ? `${data.codec_stack.label} · `
-      : "";
     setMeta(
-      `${stackLabel}${statusOn ? "ON" : "OFF"} · ${fmtUptime(data.server_uptime_ms)} · ×${n}`
+      `${statusOn ? "ON" : "OFF"} · ${fmtUptime(data.server_uptime_ms)} · ×${n}`
     );
 
     if (!instances.length) {
@@ -560,15 +545,6 @@ window.OmxVdecPanel = (() => {
       const hint = data.hint ? `<br/><small>${esc(data.hint)}</small>` : "";
       if (kept) {
         list.innerHTML = `<p class="omx-vdec-empty">decoder 已结束，抓帧预览仍保留在上方${hint}</p>`;
-        return;
-      }
-      const playing = data.codec_stack?.playing;
-      if (playing === "c2" || playing === "both") {
-        list.innerHTML = `<p class="omx-vdec-empty">正在播 C2，但还没有调试实例。${hint}</p>`;
-        return;
-      }
-      if (playing === "omx") {
-        list.innerHTML = `<p class="omx-vdec-empty">正在播 OMX，但还没有调试实例。${hint}</p>`;
         return;
       }
       if (!data.ok) {
@@ -584,7 +560,7 @@ window.OmxVdecPanel = (() => {
   }
 
   async function fetchSample() {
-    const res = await fetch("/api/omx/vdec");
+    const res = await fetch(API.sample);
     const data = await res.json();
     // Always return payload so controls can update even when status file is missing.
     return data;
@@ -595,7 +571,7 @@ window.OmxVdecPanel = (() => {
     setting = true;
     setStatus(`设置 ${id}=${value} …`);
     try {
-      const res = await fetch("/api/omx/controls", {
+      const res = await fetch(API.controls, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, value }),
@@ -603,7 +579,7 @@ window.OmxVdecPanel = (() => {
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "设置失败");
       lastControlsKey = "";
-      if (data.controls) renderControls(data.controls, lastStack);
+      if (data.controls) renderControls(data.controls);
       setStatus(
         `已设置 ${data.prop}=${data.value}${data.hint ? " — " + data.hint : ""}`
       );
@@ -619,28 +595,23 @@ window.OmxVdecPanel = (() => {
 
   async function pullLivePreview(data) {
     const ctrls = data.controls || [];
-    const c2On = !!ctrls.find((c) => c.id === "c2_dumpframe" && c.on);
-    const omxOn = !!ctrls.find((c) => c.id === "omx_dumpframe" && c.on);
-    if ((!c2On && !omxOn) || autoSnapping) return;
+    const dumpOn = !!ctrls.find((c) => c.id === DUMPFRAME_ID && c.on);
+    if (!dumpOn || autoSnapping) return;
     const inst = (data.instances || []).filter((i) => {
       if (!i.snap || !(i.snap.ok || i.snap.req)) return false;
-      if (i.src === "c2") return c2On;
-      return omxOn;
+      return (i.src || STACK) === STACK;
     });
     if (!inst.length) return;
     const sig = inst
       .map(
         (i) =>
-          `${i.src || "omx"}:${i.log_id ?? i.id}:${i.snap?.req ?? ""}:${i.snap?.pts_us ?? ""}`
+          `${i.src || STACK}:${i.log_id ?? i.id}:${i.snap?.req ?? ""}:${i.snap?.pts_us ?? ""}`
       )
       .join("|");
     if (!sig || sig === lastAutoSnapSig) return;
     autoSnapping = true;
     try {
-      let q = "";
-      if (c2On && !omxOn) q = "?src=c2";
-      else if (omxOn && !c2On) q = "?src=omx";
-      const res = await fetch("/api/omx/vdec/preview" + q);
+      const res = await fetch(API.preview);
       const body = await res.json();
       if (body.ok) {
         lastAutoSnapSig = sig;
@@ -670,22 +641,11 @@ window.OmxVdecPanel = (() => {
       render(data);
       pullLivePreview(data);
       if (!didAutoEnableStatus && !setting && Array.isArray(data.controls)) {
-        const playing = data.codec_stack?.playing;
-        const preferred = data.codec_stack?.preferred;
-        let ids = ["vdec_debug", "c2_vdec_debug"];
-        if (playing === "c2" || (!playing && preferred === "c2")) {
-          ids = ["c2_vdec_debug"];
-        } else if (playing === "omx" || (!playing && preferred === "omx")) {
-          ids = ["vdec_debug"];
-        }
-        const pending = ids.filter((id) => {
-          const dbg = data.controls.find((c) => c.id === id);
-          return dbg && !dbg.on;
-        });
-        if (!pending.length) {
+        const dbg = data.controls.find((c) => c.id === STATUS_ID);
+        if (!dbg || dbg.on) {
           didAutoEnableStatus = true;
         } else {
-          await setControl(pending[0], "1");
+          await setControl(STATUS_ID, "1");
         }
       }
       const cost = Math.round(performance.now() - t0);
@@ -735,14 +695,14 @@ window.OmxVdecPanel = (() => {
     const { clearTemps } = els();
     setting = true;
     if (clearTemps) clearTemps.disabled = true;
-    setStatus("删除 OMX/C2 抓帧临时文件…");
+    setStatus(`删除 ${GROUP} 抓帧临时文件…`);
     try {
-      const res = await fetch("/api/omx/vdec/clear-temps", { method: "POST" });
+      const res = await fetch(API.clearTemps, { method: "POST" });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "删除失败");
       wipePreviews();
       const n = data.removed != null ? data.removed : 0;
-      setStatus(`已删除 ${n} 个抓帧文件（omx_last_frame / c2_last_frame）`);
+      setStatus(`已删除 ${n} 个抓帧文件（${STACK}_last_frame）`);
     } catch (err) {
       setStatus(String(err.message || err), true);
     } finally {
@@ -798,7 +758,6 @@ window.OmxVdecPanel = (() => {
     }
 
     lastControlsKey = "";
-    lastStack = null;
     didAutoEnableStatus = false;
     eosHoldAnchor = {};
     lastAutoSnapSig = "";
@@ -812,7 +771,6 @@ window.OmxVdecPanel = (() => {
     stop();
     root = null;
     lastControlsKey = "";
-    lastStack = null;
     didAutoEnableStatus = false;
     eosHoldAnchor = {};
     autoSnapping = false;
@@ -820,4 +778,46 @@ window.OmxVdecPanel = (() => {
   }
 
   return { mount, unmount, start, stop };
-})();
+}
+
+window.OmxVdecPanel = createVdecPanel({
+  stack: "omx",
+  group: "OMX",
+  statusId: "vdec_debug",
+  dumpframeId: "omx_dumpframe",
+  ids: {
+    meta: "#omx-vdec-meta",
+    list: "#omx-vdec-list",
+    status: "#omx-vdec-status",
+    controls: "#omx-vdec-controls",
+    previews: "#omx-vdec-previews",
+    clearTemps: "#omx-vdec-clear-temps",
+  },
+  api: {
+    sample: "/api/omx/vdec",
+    controls: "/api/omx/controls",
+    preview: "/api/omx/vdec/preview",
+    clearTemps: "/api/omx/vdec/clear-temps",
+  },
+});
+
+window.C2VdecPanel = createVdecPanel({
+  stack: "c2",
+  group: "C2",
+  statusId: "",
+  dumpframeId: "c2_dumpframe",
+  ids: {
+    meta: "#c2-vdec-meta",
+    list: "#c2-vdec-list",
+    status: "#c2-vdec-status",
+    controls: "#c2-vdec-controls",
+    previews: "#c2-vdec-previews",
+    clearTemps: "#c2-vdec-clear-temps",
+  },
+  api: {
+    sample: "/api/c2/vdec",
+    controls: "/api/c2/controls",
+    preview: "/api/c2/vdec/preview",
+    clearTemps: "/api/c2/vdec/clear-temps",
+  },
+});
