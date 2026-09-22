@@ -27,10 +27,12 @@ logger = logging.getLogger(__name__)
 STATUS_PATH_DEFAULT = "/data/vendor/media/omx_vdec_status.json"
 ENABLE_PROP = "persist.vendor.omx.vdec.debug"
 JSON_PATH_PROP = "persist.vendor.omx.vdec.debug.json"
-C2_DUMPSYS_CMD = "dumpsys android.hardware.media.c2.IComponentStore/default"
+C2_DUMPSYS_SERVICE = "android.hardware.media.c2.IComponentStore/default"
+C2_DUMPSYS_CMD = f"dumpsys {C2_DUMPSYS_SERVICE}"
 C2_DUMPSYS_MARKER = "--- NC C2 VDEC status ---"
+C2_SNAP_MARKER = b"--- NC C2 SNAP ---"
+C2_SNAP_BYTES_MARKER = b"--- NC C2 SNAP BYTES ---\n"
 C2_NO_USERDEBUG_HINT = "C2 状态经 dumpsys 读取，开播后即有实例（不需要 userdebug / root）"
-C2_DUMPFRAME_EN_PROP = "persist.vendor.codec2.dumpframe.en"
 OMX_DUMPFRAME_EN_PROP = "persist.vendor.omx.dumpframe.en"
 DUMPFRAME_DIR = "/data/vendor/media"
 _SNAP_NAME_RE = re.compile(r"(omx|c2)_last_frame\.V(\d+)\.json$")
@@ -154,15 +156,6 @@ CONTROLS: list[dict[str, Any]] = [
         "group": "C2",
         "default_on": True,
         "hint": "策略开关；新建 Codec2 decoder 后生效",
-    },
-    {
-        "id": "c2_dumpframe",
-        "prop": C2_DUMPFRAME_EN_PROP,
-        "type": "bool",
-        "label": "C2 DumpFrame",
-        "group": "C2",
-        "default_on": False,
-        "hint": "开播时读取；打开后约每秒抓一帧。需重新开播生效",
     },
 ]
 
@@ -792,6 +785,144 @@ def _c2_dumpsys_json() -> tuple[str, str]:
     except json.JSONDecodeError as exc:
         return "", f"JSON 解析失败: {exc}"
     return body[start : start + end], ""
+
+
+def _parse_c2_snap_blob(blob: bytes) -> tuple[dict[str, Any] | None, bytes, str]:
+    idx = blob.find(C2_SNAP_MARKER)
+    if idx < 0:
+        text = blob.decode("utf-8", errors="replace").strip()
+        return None, b"", text[:240] or "dumpsys 没有 C2 SNAP 段"
+    rest = blob[idx + len(C2_SNAP_MARKER) :].lstrip(b"\r\n")
+    split = rest.find(C2_SNAP_BYTES_MARKER)
+    header = rest if split < 0 else rest[:split]
+    raw = b"" if split < 0 else rest[split + len(C2_SNAP_BYTES_MARKER) :]
+    header_text = header.decode("utf-8", errors="replace").strip()
+    start = header_text.find("{")
+    if start < 0:
+        return None, b"", header_text[:240] or "SNAP JSON 缺失"
+    try:
+        meta, _end = json.JSONDecoder().raw_decode(header_text[start:])
+    except json.JSONDecodeError as exc:
+        return None, b"", f"SNAP JSON 解析失败: {exc}"
+    if not isinstance(meta, dict):
+        return None, b"", "SNAP JSON 根不是 object"
+    size = int(meta.get("size") or 0)
+    if size > 0:
+        raw = raw[:size]
+    return meta, raw, ""
+
+
+def _c2_instance_snap(payload: dict[str, Any], log_id: int) -> dict[str, Any] | None:
+    for inst in payload.get("instances") or []:
+        if not isinstance(inst, dict):
+            continue
+        try:
+            if int(inst.get("log_id")) == log_id:
+                snap = inst.get("snap") or {}
+                return snap if isinstance(snap, dict) else {}
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def pull_c2_ram_snap(log_id: int) -> dict[str, Any]:
+    """Request a RAM snap via dumpsys --snap, wait, then exec-out --yuv. No eMMC."""
+    status = adb.get_status()
+    if not status["available"]:
+        return {"ok": False, "error": "no adb device online"}
+    try:
+        lid = int(log_id)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": f"invalid log_id: {log_id!r}"}
+    if lid < 0:
+        return {"ok": False, "error": "log_id < 0"}
+
+    tag = f"V{lid}"
+    try:
+        req = adb.run_shell(f"{C2_DUMPSYS_CMD} -- --snap {tag}", timeout=8.0)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    req_text = (req.stdout or "") + "\n" + (req.stderr or "")
+    if "permission denied" in req_text.lower():
+        return {"ok": False, "error": "permission denied（DUMP 权限）"}
+    if f"no decoder V{lid}" in req_text:
+        return {"ok": False, "error": f"没有 decoder {tag}"}
+
+    wanted = None
+    marker = req_text.find("{")
+    if marker >= 0:
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(req_text[marker:])
+            wanted = int(obj.get("req"))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            wanted = None
+
+    deadline = time.monotonic() + 2.5
+    last_snap: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        raw, err = _c2_dumpsys_json()
+        parsed = _parse_json_body(raw, enabled="1", path=C2_DUMPSYS_CMD, src="c2")
+        snap = _c2_instance_snap(parsed, lid)
+        if snap is None and not parsed.get("ok"):
+            time.sleep(0.15)
+            continue
+        last_snap = snap or {}
+        reqn = int(last_snap.get("req") or 0)
+        if wanted is not None and reqn < wanted:
+            time.sleep(0.15)
+            continue
+        if last_snap.get("ok"):
+            break
+        if last_snap.get("error"):
+            return {
+                "ok": False,
+                "error": str(last_snap.get("error")),
+                "log_id": lid,
+                "snap": last_snap,
+            }
+        time.sleep(0.15)
+    else:
+        if not last_snap.get("ok"):
+            return {
+                "ok": False,
+                "error": last_snap.get("error")
+                or f"{tag} 等待输出帧超时（暂停播放时不会出帧）",
+                "log_id": lid,
+                "snap": last_snap,
+            }
+
+    try:
+        blob = adb.run_adb_bytes(
+            ["exec-out", "dumpsys", C2_DUMPSYS_SERVICE, "--", "--yuv", tag],
+            timeout=20.0,
+        )
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "log_id": lid}
+    meta, yuv, err = _parse_c2_snap_blob(blob.stdout or b"")
+    if err:
+        extra = (blob.stderr or b"").decode("utf-8", errors="replace").strip()
+        return {"ok": False, "error": extra or err, "log_id": lid}
+    assert meta is not None
+    meta["src"] = "c2"
+    meta["log_id"] = lid
+    jpeg = _yuv_preview_jpeg(yuv, meta) if yuv else None
+    frame = dict(meta)
+    frame["yuv_bytes"] = len(yuv)
+    if jpeg:
+        frame["jpeg"] = jpeg
+        frame["ok"] = True
+    elif yuv:
+        frame["ok"] = True
+        frame["error"] = frame.get("error") or "YUV 已取回但转 JPEG 失败（缺 OpenCV？）"
+    else:
+        frame["ok"] = False
+        frame["error"] = frame.get("error") or "没有 YUV 字节"
+    return {
+        "ok": bool(frame.get("ok") and jpeg),
+        "frames": [frame] if frame.get("ok") or frame.get("error") else [],
+        "log_id": lid,
+        "error": "" if jpeg else str(frame.get("error") or "抓帧失败"),
+    }
 
 
 def _client_live(stamp: float) -> bool:

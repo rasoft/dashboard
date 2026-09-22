@@ -18,16 +18,21 @@ function createVdecPanel(cfg) {
   let lastSnaps = {};
   let eosHoldAnchor = {};
   let autoSnapping = false;
+  let snappingLogId = null;
   let lastAutoSnapSig = "";
+
+  function q(sel) {
+    return sel ? root?.querySelector(sel) : null;
+  }
 
   function els() {
     return {
-      meta: root?.querySelector(IDS.meta),
-      list: root?.querySelector(IDS.list),
-      status: root?.querySelector(IDS.status),
-      controls: root?.querySelector(IDS.controls),
-      previews: root?.querySelector(IDS.previews),
-      clearTemps: root?.querySelector(IDS.clearTemps),
+      meta: q(IDS.meta),
+      list: q(IDS.list),
+      status: q(IDS.status),
+      controls: q(IDS.controls),
+      previews: q(IDS.previews),
+      clearTemps: q(IDS.clearTemps),
     };
   }
 
@@ -307,8 +312,35 @@ function createVdecPanel(cfg) {
     });
   }
 
+  function instLogId(inst) {
+    if (inst && inst.log_id != null && inst.log_id !== "") {
+      const n = Number(inst.log_id);
+      if (!Number.isNaN(n)) return n;
+    }
+    const m = String(inst?.id || "").match(/V(\d+)/i);
+    return m ? Number(m[1]) : NaN;
+  }
+
   function snapRow(inst) {
     const s = snapFor(inst);
+    if (STACK === "c2") {
+      if (s.jpeg) {
+        const info = `${esc(s.w)}×${esc(s.h)} ${esc(s.format || "")} stride ${esc(
+          s.stride
+        )} ${esc(s.size || s.yuv_bytes || "")}B · dumpsys RAM · 见上方预览`;
+        return row("末帧", info);
+      }
+      if (s.ok) {
+        return row(
+          "末帧",
+          `${esc(s.w)}×${esc(s.h)} ${esc(s.format || "")} RAM ${esc(s.size || 0)}B`
+        );
+      }
+      if (s.error) {
+        return row("末帧", esc(s.error));
+      }
+      return row("末帧", "点卡片「抓帧」：dumpsys --snap 后 --yuv，不写盘");
+    }
     if (s.jpeg) {
       const info = `${esc(s.w)}×${esc(s.h)} ${esc(s.format || "")} stride ${esc(
         s.stride
@@ -371,6 +403,17 @@ function createVdecPanel(cfg) {
         ? '<span class="omx-vdec-chip">C2</span>'
         : '<span class="omx-vdec-chip muted">OMX</span>';
 
+    const lid = instLogId(inst);
+    const snapBusy = STACK === "c2" && snappingLogId === lid;
+    const snapBtn =
+      STACK === "c2" && Number.isFinite(lid)
+        ? `<button type="button" class="omx-vdec-toggle action" data-c2-snap="${esc(
+            lid
+          )}" ${snapBusy ? "disabled" : ""}>${
+            snapBusy ? "抓帧中…" : "抓帧"
+          }</button>`
+        : "";
+
     return `
       <article class="omx-vdec-card">
         <header class="omx-vdec-card-head">
@@ -381,6 +424,7 @@ function createVdecPanel(cfg) {
           ${usageChip(u)}
           ${eosChip(inst)}
           ${wtlChip}
+          ${snapBtn}
         </header>
         <table class="omx-vdec-table">
           ${row(
@@ -593,7 +637,41 @@ function createVdecPanel(cfg) {
     }
   }
 
+  async function snapC2Instance(logId) {
+    if (STACK !== "c2" || setting || snappingLogId != null) return;
+    const lid = Number(logId);
+    if (!Number.isFinite(lid)) return;
+    snappingLogId = lid;
+    setting = true;
+    setStatus(`抓帧 V${lid}（dumpsys RAM，不写盘）…`);
+    try {
+      const res = await fetch(API.preview, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ log_id: lid }),
+      });
+      const body = await res.json();
+      if (!body.ok) throw new Error(body.error || "抓帧失败");
+      mergeSnaps(body.frames || []);
+      setStatus(`已抓 V${lid}（dumpsys --yuv）`);
+    } catch (err) {
+      setStatus(String(err.message || err), true);
+    } finally {
+      snappingLogId = null;
+      setting = false;
+      if (!fetching) await tick();
+    }
+  }
+
+  function onC2SnapClick(e) {
+    const btn = e.target.closest("[data-c2-snap]");
+    if (!btn || !root.contains(btn)) return;
+    e.stopPropagation();
+    snapC2Instance(btn.dataset.c2Snap);
+  }
+
   async function pullLivePreview(data) {
+    if (!DUMPFRAME_ID) return;
     const ctrls = data.controls || [];
     const dumpOn = !!ctrls.find((c) => c.id === DUMPFRAME_ID && c.on);
     if (!dumpOn || autoSnapping) return;
@@ -691,7 +769,7 @@ function createVdecPanel(cfg) {
   }
 
   async function clearDebugTemps() {
-    if (setting) return;
+    if (setting || !API.clearTemps) return;
     const { clearTemps } = els();
     setting = true;
     if (clearTemps) clearTemps.disabled = true;
@@ -748,9 +826,10 @@ function createVdecPanel(cfg) {
 
     if (root.dataset.bound !== "1") {
       root.dataset.bound = "1";
-      const { controls, clearTemps } = els();
+      const { controls, clearTemps, list } = els();
       controls?.addEventListener("click", onControlsClick);
       controls?.addEventListener("change", onControlsChange);
+      list?.addEventListener("click", onC2SnapClick);
       clearTemps?.addEventListener("click", (e) => {
         e.stopPropagation();
         clearDebugTemps();
@@ -762,6 +841,7 @@ function createVdecPanel(cfg) {
     eosHoldAnchor = {};
     lastAutoSnapSig = "";
     autoSnapping = false;
+    snappingLogId = null;
     start();
   }
 
@@ -775,6 +855,7 @@ function createVdecPanel(cfg) {
     eosHoldAnchor = {};
     autoSnapping = false;
     lastAutoSnapSig = "";
+    snappingLogId = null;
   }
 
   return { mount, unmount, start, stop };
@@ -805,19 +886,19 @@ window.C2VdecPanel = createVdecPanel({
   stack: "c2",
   group: "C2",
   statusId: "",
-  dumpframeId: "c2_dumpframe",
+  dumpframeId: "",
   ids: {
     meta: "#c2-vdec-meta",
     list: "#c2-vdec-list",
     status: "#c2-vdec-status",
     controls: "#c2-vdec-controls",
     previews: "#c2-vdec-previews",
-    clearTemps: "#c2-vdec-clear-temps",
+    clearTemps: "",
   },
   api: {
     sample: "/api/c2/vdec",
     controls: "/api/c2/controls",
     preview: "/api/c2/vdec/preview",
-    clearTemps: "/api/c2/vdec/clear-temps",
+    clearTemps: "",
   },
 });

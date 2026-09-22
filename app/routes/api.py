@@ -295,8 +295,33 @@ def c2_controls_set():
 
 
 @api_bp.get("/c2/vdec/preview")
-def c2_vdec_preview():
-    result = omx_vdec.pull_latest_snaps(src="c2")
+def c2_vdec_preview_get():
+    raw = request.args.get("log_id")
+    if raw is None or str(raw).strip() == "":
+        return (
+            jsonify({"ok": False, "error": "C2 抓帧请指定 log_id（卡片「抓帧」或 POST log_id）"}),
+            400,
+        )
+    try:
+        log_id = int(raw)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": f"invalid log_id: {raw!r}"}), 400
+    result = omx_vdec.pull_c2_ram_snap(log_id)
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.post("/c2/vdec/preview")
+def c2_vdec_preview_post():
+    data = request.get_json(silent=True) or {}
+    raw = data.get("log_id")
+    if raw is None or str(raw).strip() == "":
+        return jsonify({"ok": False, "error": "missing log_id"}), 400
+    try:
+        log_id = int(raw)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": f"invalid log_id: {raw!r}"}), 400
+    result = omx_vdec.pull_c2_ram_snap(log_id)
     status = 200 if result.get("ok") else 400
     return jsonify(result), status
 
