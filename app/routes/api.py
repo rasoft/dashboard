@@ -253,8 +253,18 @@ def omx_controls_set():
     return jsonify(result), status
 
 
-@api_bp.post("/omx/vdec/snap")
-def omx_vdec_snap():
-    result = omx_vdec.snap_last_frame()
+@api_bp.get("/omx/vdec/preview")
+def omx_vdec_preview():
+    src = (request.args.get("src") or "").strip().lower() or None
+    if src not in (None, "c2", "omx"):
+        return jsonify({"ok": False, "error": "src must be c2 or omx"}), 400
+    result = omx_vdec.pull_latest_snaps(src=src)
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@api_bp.post("/omx/vdec/clear-temps")
+def omx_vdec_clear_temps():
+    result = omx_vdec.clear_debug_temps()
     status = 200 if result.get("ok") else 400
     return jsonify(result), status

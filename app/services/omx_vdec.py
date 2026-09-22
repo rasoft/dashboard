@@ -26,12 +26,13 @@ logger = logging.getLogger(__name__)
 STATUS_PATH_DEFAULT = "/data/vendor/media/omx_vdec_status.json"
 ENABLE_PROP = "persist.vendor.omx.vdec.debug"
 JSON_PATH_PROP = "persist.vendor.omx.vdec.debug.json"
-DUMPFRAME_PROP = "persist.vendor.omx.dumpframe.req"
 C2_STATUS_PATH_DEFAULT = "/data/vendor/media/c2_vdec_status.json"
 C2_ENABLE_PROP = "persist.vendor.codec2.vdec.debug"
 C2_JSON_PATH_PROP = "persist.vendor.codec2.vdec.debug.json"
-C2_DUMPFRAME_PROP = "persist.vendor.codec2.dumpframe.req"
+C2_DUMPFRAME_EN_PROP = "persist.vendor.codec2.dumpframe.en"
+OMX_DUMPFRAME_EN_PROP = "persist.vendor.omx.dumpframe.en"
 DUMPFRAME_DIR = "/data/vendor/media"
+_SNAP_NAME_RE = re.compile(r"(omx|c2)_last_frame\.V(\d+)\.json$")
 
 # Dashboard-exportable controls only (never free-form setprop).
 CONTROLS: list[dict[str, Any]] = [
@@ -95,6 +96,15 @@ CONTROLS: list[dict[str, Any]] = [
         "hint": "状态 JSON 导出；需重新开播才会 register",
     },
     {
+        "id": "omx_dumpframe",
+        "prop": OMX_DUMPFRAME_EN_PROP,
+        "type": "bool",
+        "label": "OMX DumpFrame",
+        "group": "OMX",
+        "default_on": False,
+        "hint": "开播时读取；打开后约每秒抓一帧。需重新开播生效",
+    },
+    {
         "id": "c2_loglevel",
         "prop": "persist.vendor.codec2.loglevel",
         "type": "choice",
@@ -151,7 +161,16 @@ CONTROLS: list[dict[str, Any]] = [
         "label": "C2 Status",
         "group": "C2",
         "default_on": False,
-        "hint": "Codec2 状态 JSON 导出；开播中 on_input 也会 register。无文件则需 userdebug 且已编进 C2_VDEC_DEBUG_STATUS",
+        "hint": "状态 JSON 导出；需重新开播才会 register。无文件则需 userdebug 且已编进 C2_VDEC_DEBUG_STATUS",
+    },
+    {
+        "id": "c2_dumpframe",
+        "prop": C2_DUMPFRAME_EN_PROP,
+        "type": "bool",
+        "label": "C2 DumpFrame",
+        "group": "C2",
+        "default_on": False,
+        "hint": "开播时读取；打开后约每秒抓一帧。需重新开播生效",
     },
 ]
 
@@ -450,62 +469,7 @@ def _pull_snap_yuv(path: str) -> bytes:
     return result.stdout or b""
 
 
-def snap_last_frame() -> dict[str, Any]:
-    """One-shot: bump dumpframe.req, then pull each decoder's last reported YUV."""
-    status = adb.get_status()
-    if not status["available"]:
-        return {"ok": False, "error": "no adb device online"}
-
-    root = _ensure_root(force=False)
-    if not root.get("ok"):
-        return root
-
-    try:
-        got_omx = adb.run_shell(f"getprop {DUMPFRAME_PROP}", timeout=4.0)
-        got_c2 = adb.run_shell(f"getprop {C2_DUMPFRAME_PROP}", timeout=4.0)
-        raw_omx = (got_omx.stdout or "").strip()
-        raw_c2 = (got_c2.stdout or "").strip()
-        cur = max(int(raw_omx) if raw_omx.isdigit() else 0, int(raw_c2) if raw_c2.isdigit() else 0)
-    except Exception as exc:
-        return {"ok": False, "error": f"getprop failed: {exc}"}
-
-    req = cur + 1
-    try:
-        result = adb.run_shell(
-            f"setprop {DUMPFRAME_PROP} {req} ; setprop {C2_DUMPFRAME_PROP} {req}",
-            timeout=5.0,
-        )
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
-    if result.returncode != 0:
-        err = (result.stderr or result.stdout or "setprop failed").strip()
-        return {"ok": False, "error": err, "prop": DUMPFRAME_PROP, "req": req}
-
-    deadline = time.monotonic() + 4.0
-    matched: list[dict[str, Any]] = []
-    while time.monotonic() < deadline:
-        found: list[dict[str, Any]] = []
-        for path in _list_snap_json_paths():
-            meta = _pull_snap_meta(path)
-            if not meta or int(meta.get("req") or 0) != req:
-                continue
-            if not meta.get("src"):
-                meta["src"] = "c2" if "c2_last_frame" in path else "omx"
-            found.append(meta)
-        if found:
-            matched = found
-            break
-        time.sleep(0.2)
-
-    if not matched:
-        return {
-            "ok": False,
-            "req": req,
-            "frames": [],
-            "error": "decoder 未处理抓帧请求",
-            "hint": "必须在出帧中抓：点按钮后等下一帧 AvBufferDone。停播/EOS hold 不再映射已回收 framebuffer",
-        }
-
+def _frames_from_metas(matched: list[dict[str, Any]]) -> list[dict[str, Any]]:
     frames: list[dict[str, Any]] = []
     for meta in matched:
         item: dict[str, Any] = {
@@ -523,6 +487,7 @@ def snap_last_frame() -> dict[str, Any]:
             "format": meta.get("format") or "",
             "path": meta.get("path") or "",
             "error": meta.get("error") or "",
+            "req": meta.get("req"),
         }
         yuv_path = str(item["path"] or "")
         if item["ok"] and yuv_path:
@@ -537,13 +502,121 @@ def snap_last_frame() -> dict[str, Any]:
                 item["error"] = item["error"] or "yuv 拉取为空"
                 item["ok"] = False
         frames.append(item)
+    return frames
 
+
+def _live_snap_ids(src: str | None) -> set[tuple[str, int]]:
+    with _cache_lock:
+        insts = list(_cache.get("instances") or [])
+    out: set[tuple[str, int]] = set()
+    for inst in insts:
+        if not isinstance(inst, dict):
+            continue
+        isrc = str(inst.get("src") or "omx")
+        if src and isrc != src:
+            continue
+        lid = inst.get("log_id")
+        if lid is None:
+            lid = inst.get("id")
+        try:
+            out.add((isrc, int(lid)))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def pull_latest_snaps(*, src: str | None = None) -> dict[str, Any]:
+    """Pull already-written last-frame YUV (no dumpframe.req bump)."""
+    status = adb.get_status()
+    if not status["available"]:
+        return {"ok": False, "error": "no adb device online"}
+
+    root = _ensure_root(force=False)
+    if not root.get("ok"):
+        return root
+
+    want = (src or "").strip().lower()
+    live = _live_snap_ids(want or None)
+    found: list[dict[str, Any]] = []
+    for path in _list_snap_json_paths():
+        named = _SNAP_NAME_RE.search(path)
+        if named:
+            isrc, lid = named.group(1), int(named.group(2))
+            if want and isrc != want:
+                continue
+            if (isrc, lid) not in live:
+                continue
+        elif not live:
+            continue
+        meta = _pull_snap_meta(path)
+        if not meta:
+            continue
+        if not meta.get("src"):
+            meta["src"] = "c2" if "c2_last_frame" in path else "omx"
+        if want and str(meta.get("src") or "") != want:
+            continue
+        try:
+            lid = int(meta.get("log_id"))
+        except (TypeError, ValueError):
+            continue
+        if (str(meta.get("src") or "omx"), lid) not in live:
+            continue
+        found.append(meta)
+
+    frames = _frames_from_metas(found)
     any_ok = any(f.get("ok") for f in frames)
     return {
         "ok": any_ok,
-        "req": req,
         "frames": frames,
-        "error": "" if any_ok else (frames[0].get("error") if frames else "snap failed"),
+        "error": "" if any_ok else (frames[0].get("error") if frames else "尚无抓帧文件"),
+    }
+
+
+def _list_dumpframe_paths() -> list[str]:
+    result = adb.run_shell(
+        f"ls {DUMPFRAME_DIR}/omx_last_frame.V* {DUMPFRAME_DIR}/c2_last_frame.V* 2>/dev/null",
+        timeout=4.0,
+    )
+    paths: list[str] = []
+    for token in (result.stdout or "").split():
+        token = token.strip()
+        if "*" in token:
+            continue
+        if "/omx_last_frame.V" in token or "/c2_last_frame.V" in token:
+            paths.append(token)
+    return paths
+
+
+def clear_debug_temps() -> dict[str, Any]:
+    """Delete OMX/C2 dumpframe leftovers under /data/vendor/media (engineers, rooted)."""
+    status = adb.get_status()
+    if not status["available"]:
+        return {"ok": False, "error": "no adb device online"}
+
+    root = _ensure_root(force=False)
+    if not root.get("ok"):
+        return root
+
+    before = _list_dumpframe_paths()
+    try:
+        result = adb.run_shell(
+            f"rm -f {DUMPFRAME_DIR}/omx_last_frame.V* {DUMPFRAME_DIR}/c2_last_frame.V*",
+            timeout=8.0,
+        )
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "removed": 0, "steps": root.get("steps")}
+
+    if result.returncode != 0:
+        err = (result.stderr or result.stdout or "rm failed").strip()
+        return {"ok": False, "error": err, "removed": 0, "steps": root.get("steps")}
+
+    leftover = _list_dumpframe_paths()
+    return {
+        "ok": True,
+        "removed": max(0, len(before) - len(leftover)),
+        "paths": before,
+        "leftover": leftover,
+        "steps": root.get("steps"),
     }
 
 

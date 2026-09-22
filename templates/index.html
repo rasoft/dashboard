@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Android Board Dashboard</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=omxsnap3" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=omxsnap4" />
 </head>
 <body>
   <header class="topbar">
@@ -433,7 +433,8 @@
     <div class="omx-vdec">
       <div class="omx-vdec-toolbar">
         <div class="omx-vdec-meta" id="omx-vdec-meta">等待采样…</div>
-        <button type="button" class="omx-vdec-toggle action" id="omx-vdec-snap">抓末帧</button>
+        <button type="button" class="omx-vdec-toggle action" id="omx-vdec-clear-temps"
+          title="删除 /data/vendor/media 下 OMX/C2 抓帧临时文件（omx_last_frame.V* / c2_last_frame.V*）">清除抓帧文件</button>
       </div>
       <div class="omx-vdec-controls" id="omx-vdec-controls" aria-label="OMX/C2 调试开关"></div>
       <div class="omx-vdec-previews" id="omx-vdec-previews" hidden></div>
@@ -467,7 +468,7 @@
   <script src="{{ url_for('static', filename='js/sf-frametimeline.js') }}"></script>
   <script src="{{ url_for('static', filename='js/meminfo.js') }}"></script>
   <script src="{{ url_for('static', filename='js/diskstats.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/omx-vdec.js') }}?v=omxsnap9"></script>
+  <script src="{{ url_for('static', filename='js/omx-vdec.js') }}?v=omxsnap15"></script>
   <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>

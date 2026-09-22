@@ -1277,6 +1277,7 @@ body {
   margin: 0 0 0.35rem;
   border-radius: 6px;
   background: #000;
+  min-height: 8rem;
 }
 
 .omx-vdec-toggle:disabled,

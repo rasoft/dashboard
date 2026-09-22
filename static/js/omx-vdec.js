@@ -12,7 +12,8 @@ window.OmxVdecPanel = (() => {
   let didAutoEnableStatus = false;
   let lastSnaps = {};
   let eosHoldAnchor = {};
-  let snapping = false;
+  let autoSnapping = false;
+  let lastAutoSnapSig = "";
 
   function els() {
     return {
@@ -20,8 +21,8 @@ window.OmxVdecPanel = (() => {
       list: root?.querySelector("#omx-vdec-list"),
       status: root?.querySelector("#omx-vdec-status"),
       controls: root?.querySelector("#omx-vdec-controls"),
-      snap: root?.querySelector("#omx-vdec-snap"),
       previews: root?.querySelector("#omx-vdec-previews"),
+      clearTemps: root?.querySelector("#omx-vdec-clear-temps"),
     };
   }
 
@@ -176,20 +177,76 @@ window.OmxVdecPanel = (() => {
     });
   }
 
-  function commitSnaps(frames) {
-    const next = {};
+  function frameTitle(f) {
+    const stackSrc = (f.src || "omx").toUpperCase();
+    return `${stackSrc} V${f.log_id ?? snapKey(f)} ${f.w}×${f.h} ${f.format || ""} ${
+      f.size || f.yuv_bytes || ""
+    }B`.replace(/\s+/g, " ").trim();
+  }
+
+  function frameSrc(f) {
+    return f.objectUrl || (f.jpeg ? `data:image/jpeg;base64,${f.jpeg}` : "");
+  }
+
+  function swapPreviewSrc(img, nextSrc) {
+    if (!img || !nextSrc || img.dataset.url === nextSrc) return;
+    const prevSrc = img.dataset.url || "";
+    const gen = String(Number(img.dataset.gen || "0") + 1);
+    img.dataset.gen = gen;
+    const probe = new Image();
+    probe.onload = () => {
+      if (img.dataset.gen !== gen) {
+        if (nextSrc.startsWith("blob:")) URL.revokeObjectURL(nextSrc);
+        return;
+      }
+      img.src = nextSrc;
+      img.dataset.url = nextSrc;
+      if (prevSrc.startsWith("blob:") && prevSrc !== nextSrc) {
+        URL.revokeObjectURL(prevSrc);
+      }
+    };
+    probe.onerror = () => {
+      if (img.dataset.gen !== gen) return;
+      img.src = nextSrc;
+      img.dataset.url = nextSrc;
+    };
+    probe.src = nextSrc;
+  }
+
+  function liveSnapKeys(instances) {
+    const keys = new Set();
+    for (const inst of instances || []) {
+      const key = snapKey(inst);
+      if (key) keys.add(key);
+    }
+    return keys;
+  }
+
+  function pruneSnaps(keepKeys) {
+    const drop = {};
+    if (!keepKeys || !keepKeys.size) return drop;
+    for (const key of Object.keys(lastSnaps)) {
+      if (keepKeys.has(key)) continue;
+      drop[key] = lastSnaps[key];
+      delete lastSnaps[key];
+    }
+    return drop;
+  }
+
+  function mergeSnaps(frames, keepKeys) {
+    const dropped = keepKeys && keepKeys.size ? pruneSnaps(keepKeys) : {};
     for (const f of frames || []) {
       const key = snapKey(f);
       if (!key) continue;
+      if (keepKeys && keepKeys.size && !keepKeys.has(key)) continue;
       const item = { ...f };
       if (item.jpeg && !item.objectUrl) {
         item.objectUrl = jpegToObjectUrl(item.jpeg);
       }
-      next[key] = item;
+      lastSnaps[key] = item;
     }
-    revokeSnaps(lastSnaps);
-    lastSnaps = next;
     renderPreviews(true);
+    revokeSnaps(dropped);
   }
 
   function renderPreviews(force = false) {
@@ -198,8 +255,12 @@ window.OmxVdecPanel = (() => {
     const frames = Object.keys(lastSnaps)
       .map((k) => lastSnaps[k])
       .filter((f) => f && (f.objectUrl || f.jpeg));
-    // Decoder teardown empties the instance list; never wipe a captured still.
     if (!frames.length) {
+      if (force) {
+        previews.innerHTML = "";
+        delete previews.dataset.sig;
+        previews.hidden = true;
+      }
       return;
     }
     const sig = frames
@@ -211,16 +272,34 @@ window.OmxVdecPanel = (() => {
     }
     previews.dataset.sig = sig;
     previews.hidden = false;
-    previews.innerHTML = frames
-      .map((f) => {
-        const imgSrc = f.objectUrl || `data:image/jpeg;base64,${f.jpeg}`;
-        const stackSrc = (f.src || "omx").toUpperCase();
-        const title = `${esc(stackSrc)} V${esc(f.log_id ?? snapKey(f))} ${esc(f.w)}×${esc(f.h)} ${esc(
-          f.format || ""
-        )} ${esc(f.size || f.yuv_bytes || "")}B`;
-        return `<figure class="omx-vdec-preview"><img class="omx-vdec-snap" alt="${title}" src="${imgSrc}"><figcaption>${title}</figcaption></figure>`;
-      })
-      .join("");
+
+    const seen = new Set();
+    for (const f of frames) {
+      const key = snapKey(f);
+      seen.add(key);
+      let fig = previews.querySelector(`figure[data-key="${esc(key)}"]`);
+      if (!fig) {
+        fig = document.createElement("figure");
+        fig.className = "omx-vdec-preview";
+        fig.dataset.key = key;
+        fig.innerHTML =
+          '<img class="omx-vdec-snap" alt="" decoding="async"><figcaption></figcaption>';
+        previews.appendChild(fig);
+      }
+      const img = fig.querySelector("img");
+      const cap = fig.querySelector("figcaption");
+      const title = frameTitle(f);
+      if (cap) cap.textContent = title;
+      if (img) {
+        img.alt = "";
+        img.title = title;
+        if (f.w && f.h) img.style.aspectRatio = `${Number(f.w)} / ${Number(f.h)}`;
+        swapPreviewSrc(img, frameSrc(f));
+      }
+    }
+    Array.from(previews.querySelectorAll("figure[data-key]")).forEach((fig) => {
+      if (!seen.has(fig.dataset.key)) fig.remove();
+    });
   }
 
   function snapRow(inst) {
@@ -242,7 +321,7 @@ window.OmxVdecPanel = (() => {
     if (s.error) {
       return row("末帧", esc(s.error));
     }
-    return row("末帧", "点「抓末帧」获取当前正在交付的帧");
+    return row("末帧", "打开 OMX/C2 DumpFrame 并重新开播后约每秒更新预览");
   }
 
   function row(th, td) {
@@ -453,9 +532,11 @@ window.OmxVdecPanel = (() => {
     if (!list) return;
     lastStack = data.codec_stack || lastStack;
     renderControls(data.controls || [], lastStack);
-    renderPreviews();
 
     const instances = data.instances || [];
+    const dropped = instances.length ? pruneSnaps(liveSnapKeys(instances)) : {};
+    renderPreviews(!!Object.keys(dropped).length);
+    revokeSnaps(dropped);
     const statusOn =
       data.enabled === "1" ||
       data.enabled === "true" ||
@@ -536,27 +617,39 @@ window.OmxVdecPanel = (() => {
     }
   }
 
-  async function snapLastFrame() {
-    if (snapping) return;
-    snapping = true;
-    const { snap } = els();
-    if (snap) snap.disabled = true;
-    setStatus("抓取最后上报帧…");
+  async function pullLivePreview(data) {
+    const ctrls = data.controls || [];
+    const c2On = !!ctrls.find((c) => c.id === "c2_dumpframe" && c.on);
+    const omxOn = !!ctrls.find((c) => c.id === "omx_dumpframe" && c.on);
+    if ((!c2On && !omxOn) || autoSnapping) return;
+    const inst = (data.instances || []).filter((i) => {
+      if (!i.snap || !(i.snap.ok || i.snap.req)) return false;
+      if (i.src === "c2") return c2On;
+      return omxOn;
+    });
+    if (!inst.length) return;
+    const sig = inst
+      .map(
+        (i) =>
+          `${i.src || "omx"}:${i.log_id ?? i.id}:${i.snap?.req ?? ""}:${i.snap?.pts_us ?? ""}`
+      )
+      .join("|");
+    if (!sig || sig === lastAutoSnapSig) return;
+    autoSnapping = true;
     try {
-      const res = await fetch("/api/omx/vdec/snap", { method: "POST" });
-      const data = await res.json();
-      if (!data.ok) {
-        throw new Error(data.error || data.hint || "抓帧失败");
+      let q = "";
+      if (c2On && !omxOn) q = "?src=c2";
+      else if (omxOn && !c2On) q = "?src=omx";
+      const res = await fetch("/api/omx/vdec/preview" + q);
+      const body = await res.json();
+      if (body.ok) {
+        lastAutoSnapSig = sig;
+        mergeSnaps(body.frames || [], liveSnapKeys(inst));
       }
-      const n = (data.frames || []).filter((f) => f.ok).length;
-      commitSnaps(data.frames || []);
-      setStatus(`已抓末帧 ×${n}（req ${data.req}）`);
     } catch (err) {
-      setStatus(String(err.message || err), true);
+      console.warn("dumpframe preview", err);
     } finally {
-      snapping = false;
-      const { snap } = els();
-      if (snap) snap.disabled = false;
+      autoSnapping = false;
     }
   }
 
@@ -575,6 +668,7 @@ window.OmxVdecPanel = (() => {
     try {
       const data = await fetchSample();
       render(data);
+      pullLivePreview(data);
       if (!didAutoEnableStatus && !setting && Array.isArray(data.controls)) {
         const playing = data.codec_stack?.playing;
         const preferred = data.codec_stack?.preferred;
@@ -597,7 +691,7 @@ window.OmxVdecPanel = (() => {
       const cost = Math.round(performance.now() - t0);
       const adbMs = data.adb_ms != null ? data.adb_ms : "—";
       const ageMs = data.cache_age_ms != null ? data.cache_age_ms : "—";
-      if (!setting && !snapping) {
+      if (!setting) {
         setStatus(
           `监测中 · UI ${cost}ms · 缓存龄 ${ageMs}ms · ADB ${adbMs}ms · ${new Date().toLocaleTimeString(
             "zh-CN",
@@ -621,6 +715,40 @@ window.OmxVdecPanel = (() => {
       timer = null;
       tick();
     }, delayMs);
+  }
+
+  function wipePreviews() {
+    revokeSnaps(lastSnaps);
+    lastSnaps = {};
+    lastAutoSnapSig = "";
+    autoSnapping = false;
+    const { previews } = els();
+    if (previews) {
+      previews.innerHTML = "";
+      previews.hidden = true;
+      delete previews.dataset.sig;
+    }
+  }
+
+  async function clearDebugTemps() {
+    if (setting) return;
+    const { clearTemps } = els();
+    setting = true;
+    if (clearTemps) clearTemps.disabled = true;
+    setStatus("删除 OMX/C2 抓帧临时文件…");
+    try {
+      const res = await fetch("/api/omx/vdec/clear-temps", { method: "POST" });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "删除失败");
+      wipePreviews();
+      const n = data.removed != null ? data.removed : 0;
+      setStatus(`已删除 ${n} 个抓帧文件（omx_last_frame / c2_last_frame）`);
+    } catch (err) {
+      setStatus(String(err.message || err), true);
+    } finally {
+      setting = false;
+      if (clearTemps) clearTemps.disabled = false;
+    }
   }
 
   function onControlsClick(e) {
@@ -660,12 +788,12 @@ window.OmxVdecPanel = (() => {
 
     if (root.dataset.bound !== "1") {
       root.dataset.bound = "1";
-      const { controls, snap } = els();
+      const { controls, clearTemps } = els();
       controls?.addEventListener("click", onControlsClick);
       controls?.addEventListener("change", onControlsChange);
-      snap?.addEventListener("click", (e) => {
+      clearTemps?.addEventListener("click", (e) => {
         e.stopPropagation();
-        snapLastFrame();
+        clearDebugTemps();
       });
     }
 
@@ -673,17 +801,22 @@ window.OmxVdecPanel = (() => {
     lastStack = null;
     didAutoEnableStatus = false;
     eosHoldAnchor = {};
+    lastAutoSnapSig = "";
+    autoSnapping = false;
     start();
   }
 
   function unmount() {
+    revokeSnaps(lastSnaps);
+    lastSnaps = {};
     stop();
     root = null;
     lastControlsKey = "";
     lastStack = null;
     didAutoEnableStatus = false;
     eosHoldAnchor = {};
-    snapping = false;
+    autoSnapping = false;
+    lastAutoSnapSig = "";
   }
 
   return { mount, unmount, start, stop };
