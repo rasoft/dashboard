@@ -25,7 +25,7 @@
 - 顶栏「暂停 / 继续」可冻结各面板数据刷新与操作台 WebRTC 播放；继续时丢弃暂停期间积压的视频帧
 - 遥控器面板默认不打开
 - 输入面板默认不打开
-- 打开内存带宽 - 吞吐量 / 效率面板后会自动启用 debugfs monitor 并按秒采样；设备重启 / adb 重连后若 status_raw 不可读，会自动重新 `adb root` + mount debugfs + enable
+- 打开内存带宽 - 吞吐量 / 效率面板后会自动启用 `/proc/ddr/monitor` 并按秒采样；设备重启 / adb 重连后若 status_raw 不可读，会自动重新 `adb root` + enable
 - 打开 SurfaceFlinger - hwclayers 面板后自动按秒刷新
 - 打开 IComposer - VPU 面板后自动按秒刷新
 - 打开 SurfaceFlinger - events 面板后自动按秒刷新
@@ -114,7 +114,7 @@ http://<工作站IP>:5000
 5. **录制回放**：默认关闭；停止录制后会自动打开。可播放 / 暂停，按「上一帧」「下一帧」逐帧查看，或拖动进度条按时间快速定位；点「保存视频」将 MP4 存到本机文件夹
 6. **遥控器**：默认关闭；打开后点击虚拟按键发送
 7. **输入**：默认关闭；打开后面板内输入文本，点「发送」或按 Enter，经 `adb shell input text` 发到设备
-8. **内存带宽 - 吞吐量**：打开面板后自动执行 `adb root`、挂载 debugfs、启用 DDR monitor，并每秒采样各 client 绘制曲线（默认显示 `cpu_a55_main` / `gpu` / `vpu`）
+8. **内存带宽 - 吞吐量**：打开面板后自动执行 `adb root`、向 `/proc/ddr/monitor/enable` 写入启用 DDR monitor，并每秒采样各 client 绘制曲线（默认显示 `cpu_a55_main` / `gpu` / `vpu`）
 9. **内存带宽 - 效率**：默认关闭；同源 DDR monitor，绘制各 client 的 `RD BW/RD Trans` 与 `WR BW/WR Trans`（B/trans）
 10. **SurfaceFlinger - hwclayers**：打开面板后每秒读取 SurfaceFlinger HWC layers，按表格顺序向上拉开绘制爆炸轴测图（CLIENT 虚线），并在下方列出图例
 11. **IComposer - VPU**：打开面板后每秒读取 composer dumpsys 中的 NationalChip HWC 表；用 VPU View (x y w h) 爆炸轴测图展示屏幕位置，并按 Z 从大到小列出各层
@@ -136,7 +136,7 @@ http://<工作站IP>:5000
 - `GET /api/hdmi/ice-servers` — 浏览器/服务端共用的 STUN/TURN 配置
 - `GET /api/hdmi/bandwidth?width=1920&height=1080&fps=30&audio=1`
 - `POST /api/hdmi/delay-export` — 将延时录制的 JPEG 帧序列编码为 MP4
-- `POST /api/ddr/enable` — 启用 DDR debugfs monitor
+- `POST /api/ddr/enable` — 启用 `/proc/ddr/monitor` DDR monitor
 - `GET /api/ddr/sample?targets=cpu_a55_main,gpu,vpu,vdec_4k,vdec_2k_jpeg,emmc_sd,usb_pcie,phy_eth_dac` — 读取一次内存带宽（含 `rd_trans` / `wr_trans`，供吞吐量与效率面板共用）
 - `GET /api/hwc/layers` — 读取 SurfaceFlinger HWC 图层
 - `GET /api/hwc/status` — 读取 NationalChip HWC 状态表（composer dumpsys）

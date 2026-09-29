@@ -414,8 +414,8 @@ window.DdrPanel = (() => {
     } catch (err) {
       const msg = String(err.message || err);
       setStatus(msg, true);
-      // Keep polling: after reboot, adb may return before debugfs is ready;
-      // backend will auto re-enable once status_raw is readable path is restored.
+      // Keep polling: after reboot, adb may return before /proc/ddr/monitor is ready;
+      // backend will auto re-enable once status_raw is readable.
     } finally {
       ticking = false;
     }

@@ -1,4 +1,4 @@
-"""DDR memory bandwidth monitor via ADB debugfs."""
+"""DDR memory bandwidth monitor via ADB procfs."""
 
 from __future__ import annotations
 
@@ -25,8 +25,9 @@ DEFAULT_TARGETS = (
     "usb_pcie",
     "phy_eth_dac",
 )
-ENABLE_PATH = "/sys/kernel/debug/ddr/monitor/enable"
-STATUS_PATH = "/sys/kernel/debug/ddr/monitor/status_raw"
+MONITOR_DIR = "/proc/ddr/monitor"
+ENABLE_PATH = f"{MONITOR_DIR}/enable"
+STATUS_PATH = f"{MONITOR_DIR}/status_raw"
 
 _FREQ_RE = re.compile(r"DDR\s+Frequency:\s*(\d+)\s*Hz", re.IGNORECASE)
 # Prefer matching by client name, then the 7 numeric columns that follow.
@@ -54,7 +55,7 @@ def _shell(command: str, timeout: float = 8.0) -> subprocess.CompletedProcess[st
 
 
 def enable_monitor() -> dict[str, Any]:
-    """Prepare debugfs DDR monitor on the connected Android board."""
+    """Prepare procfs DDR monitor on the connected Android board."""
     status = adb.get_status()
     if not status["available"]:
         return {"ok": False, "error": "no adb device online"}
@@ -82,7 +83,6 @@ def enable_monitor() -> dict[str, Any]:
         pass
 
     commands = [
-        ("mount debugfs", "mount debugfs /sys/kernel/debug -t debugfs"),
         ("enable monitor", f"echo 1 > {ENABLE_PATH}"),
     ]
     for name, cmd in commands:
@@ -98,7 +98,6 @@ def enable_monitor() -> dict[str, Any]:
                 "stderr": (result.stderr or "").strip()[:200],
             }
         )
-        # Mount may fail if already mounted; enabling must succeed.
         if name == "enable monitor" and result.returncode != 0:
             err = (result.stderr or result.stdout or "enable failed").strip()
             return {"ok": False, "error": err, "steps": steps}
@@ -107,7 +106,7 @@ def enable_monitor() -> dict[str, Any]:
 
 
 def _status_raw_unusable(result: subprocess.CompletedProcess[str]) -> bool:
-    """True when status_raw cannot be read (reboot / lost root / unmounted debugfs)."""
+    """True when status_raw cannot be read (reboot / lost root / missing proc node)."""
     raw = (result.stdout or "").strip()
     err = (result.stderr or "").strip()
     blob = f"{err}\n{raw}".lower()
@@ -128,7 +127,7 @@ def _read_status_raw() -> subprocess.CompletedProcess[str]:
 
 
 def _maybe_reenable_monitor() -> dict[str, Any] | None:
-    """Re-run adb root + debugfs mount + enable, rate-limited.
+    """Re-run adb root + enable, rate-limited.
 
     Returns enable_monitor() result when an attempt was made, else None.
     """
@@ -264,7 +263,7 @@ def sample(
     """Read one DDR monitor sample for one or more client names.
 
     If status_raw is missing/unreadable (common after device reboot when adb
-    reconnects), automatically re-run root/mount/enable once and retry.
+    reconnects), automatically re-run root/enable once and retry.
     """
     if targets is None:
         if target:
