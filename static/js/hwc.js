@@ -405,7 +405,8 @@ window.HwcPanel = (() => {
         if (lastPayload) draw(lastPayload);
       });
       const state = data.display_state ? ` · ${data.display_state}` : "";
-      setMeta(`${data.count} 层 · 轴测爆炸 ${data.width}×${data.height}${state}`);
+      const ver = data.android?.release ? ` · Android ${data.android.release}` : "";
+      setMeta(`${data.count} 层 · 轴测爆炸 ${data.width}×${data.height}${state}${ver}`);
       setStatus(
         `监测中 · 最近更新 ${new Date().toLocaleTimeString("zh-CN", {
           hour12: false,

@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 from typing import Any
 
 from flask import current_app
 
 logger = logging.getLogger(__name__)
+
+# serial -> probed build info. Dropped when that device goes offline.
+_android_cache: dict[str, dict[str, Any]] = {}
+_RELEASE_RE = re.compile(r"RELEASE=(.*)")
+_SDK_RE = re.compile(r"SDK=(.*)")
 
 # Logical key -> Android KEYCODE or special action
 KEY_MAP: dict[str, int | dict[str, str]] = {
@@ -109,10 +115,68 @@ def list_devices() -> list[dict[str, str]]:
     return devices
 
 
+def _release_major(release: str, sdk: int | None) -> int | None:
+    match = re.match(r"(\d+)", release or "")
+    if match:
+        return int(match.group(1))
+    # API 21 is Android 5; the offset holds through current releases.
+    if sdk is not None and sdk >= 21:
+        return sdk - 20
+    return None
+
+
+def probe_android_version(serial: str) -> dict[str, Any] | None:
+    """Read ro.build.version.release / sdk once per connected serial."""
+    cached = _android_cache.get(serial)
+    if cached is not None:
+        return cached
+
+    try:
+        result = run_shell(
+            "echo RELEASE=$(getprop ro.build.version.release); "
+            "echo SDK=$(getprop ro.build.version.sdk)",
+            timeout=5.0,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("android version probe failed: %s", exc)
+        return None
+
+    if result.returncode != 0 and not (result.stdout or "").strip():
+        logger.warning("android version probe failed: %s", (result.stderr or "").strip())
+        return None
+
+    release = ""
+    sdk: int | None = None
+    for line in (result.stdout or "").replace("\r", "").splitlines():
+        rel_match = _RELEASE_RE.match(line.strip())
+        if rel_match:
+            release = rel_match.group(1).strip()
+            continue
+        sdk_match = _SDK_RE.match(line.strip())
+        if sdk_match:
+            raw = sdk_match.group(1).strip()
+            sdk = int(raw) if raw.isdigit() else None
+
+    if not release and sdk is None:
+        return None
+
+    info = {
+        "release": release or None,
+        "sdk": sdk,
+        "major": _release_major(release, sdk),
+    }
+    _android_cache[serial] = info
+    return info
+
+
 def get_status() -> dict[str, Any]:
     devices = list_devices()
     preferred = current_app.config.get("ADB_SERIAL") or ""
     online = [d for d in devices if d["state"] == "device"]
+    online_serials = {d["serial"] for d in online}
+    for serial in list(_android_cache):
+        if serial not in online_serials:
+            _android_cache.pop(serial, None)
 
     selected = None
     if preferred:
@@ -123,10 +187,13 @@ def get_status() -> dict[str, Any]:
     if selected is None and online:
         selected = online[0]
 
+    android = probe_android_version(selected["serial"]) if selected else None
+
     return {
         "available": selected is not None,
         "selected": selected,
         "devices": devices,
+        "android": android,
     }
 
 

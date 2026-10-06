@@ -866,7 +866,7 @@ const Dashboard = (() => {
     try {
       const res = await fetch("/api/status");
       const data = await res.json();
-      updatePill("status-adb", data.adb?.available, data.adb?.selected?.serial || "无设备");
+      updatePill("status-adb", data.adb?.available, formatAdbDetail(data.adb));
       let hdmiName = "未检测到采集卡";
       if (data.hdmi?.video?.device) {
         const name = data.hdmi.video.name || "采集卡";
@@ -881,11 +881,23 @@ const Dashboard = (() => {
     }
   }
 
+  function formatAdbDetail(adb) {
+    if (!adb?.available) return "无设备";
+    const serial = adb.selected?.serial || "已连接";
+    const release = adb.android?.release;
+    if (!release) return `${serial} · 版本未知`;
+    const sdk = adb.android.sdk;
+    const api = sdk != null ? ` (API ${sdk})` : "";
+    return `${serial} · Android ${release}${api}`;
+  }
+
   function updatePill(id, ok, detail) {
     const el = document.getElementById(id);
     if (!el) return;
     el.dataset.state = ok ? "ok" : "bad";
-    el.querySelector(".detail").textContent = detail;
+    const detailEl = el.querySelector(".detail");
+    detailEl.textContent = detail;
+    detailEl.title = detail;
   }
 
   function setupAddMenu() {

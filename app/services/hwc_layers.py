@@ -12,17 +12,77 @@ from app.services import adb
 logger = logging.getLogger(__name__)
 
 _SEP_RE = re.compile(r"^-{10,}\s*$")
-_DISPLAY_RE = re.compile(r"^Display\s+(\S+)\s+\(([^)]*)\)\s+HWC layers:", re.I)
-_DATA_RE = re.compile(
+_DISPLAY_RE = re.compile(r"^\s*Display\s+(\S+)\s+\(([^)]*)\)\s+HWC layers:", re.I)
+
+# Android 14 (and 15 legacy): relative Z is prefixed with "rel".
+#   rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 | ...
+_DATA_RE_A14 = re.compile(
     r"^\s*rel\s+(-?\d+)\s*\|\s*(-?\d+)\s*\|\s*(\S+)\s*\|\s*(-?\d+)\s*\|"
     r"\s*(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s*\|"
     r"\s*([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s*\|"
     r"(.*)$"
 )
 
+# Android 16: global Z, no "rel" prefix. Transform is a token (often "0").
+#            3 |            1 |     DEVICE |          0 |    0    0 3840 2160 | ...
+_DATA_RE_A16 = re.compile(
+    r"^\s*(-?\d+)\s*\|\s*(-?\d+)\s*\|\s*(\S+)\s*\|\s*(\S+)\s*\|"
+    r"\s*(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s*\|"
+    r"\s*([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s*\|"
+    r"(.*)$"
+)
 
-def parse_hwclayers(text: str) -> dict[str, Any]:
+
+def hwclayers_format(android: dict[str, Any] | None) -> str:
+    """Pick a dumpsys --hwclayers parser from the probed Android version."""
+    major = (android or {}).get("major")
+    if isinstance(major, int) and major >= 16:
+        return "a16"
+    return "a14"
+
+
+def _transform_value(token: str) -> int | str:
+    try:
+        return int(token)
+    except (TypeError, ValueError):
+        return token
+
+
+def _layer_from_match(name: str, match: re.Match[str]) -> dict[str, Any]:
+    focused = "[*]" in (match.group(13) or "")
+    left, top, right, bottom = (
+        int(match.group(5)),
+        int(match.group(6)),
+        int(match.group(7)),
+        int(match.group(8)),
+    )
+    return {
+        "name": name.strip(),
+        "z": int(match.group(1)),
+        "window_type": int(match.group(2)),
+        "comp_type": match.group(3).upper(),
+        "transform": _transform_value(match.group(4)),
+        "frame": {
+            "left": left,
+            "top": top,
+            "right": right,
+            "bottom": bottom,
+            "width": max(0, right - left),
+            "height": max(0, bottom - top),
+        },
+        "source_crop": {
+            "left": float(match.group(9)),
+            "top": float(match.group(10)),
+            "right": float(match.group(11)),
+            "bottom": float(match.group(12)),
+        },
+        "focused": focused,
+    }
+
+
+def parse_hwclayers(text: str, *, fmt: str = "a14") -> dict[str, Any]:
     """Parse dumpsys SurfaceFlinger --hwclayers text into structured layers."""
+    data_re = _DATA_RE_A16 if fmt == "a16" else _DATA_RE_A14
     display_id = None
     display_state = None
     layers: list[dict[str, Any]] = []
@@ -52,44 +112,14 @@ def parse_hwclayers(text: str) -> dict[str, Any]:
             pending_name = None
             continue
 
-        m_data = _DATA_RE.match(line)
+        m_data = data_re.match(line)
         if m_data and pending_name:
-            focused = "[*]" in (m_data.group(13) or "")
-            left, top, right, bottom = (
-                int(m_data.group(5)),
-                int(m_data.group(6)),
-                int(m_data.group(7)),
-                int(m_data.group(8)),
-            )
-            layers.append(
-                {
-                    "name": pending_name.strip(),
-                    "z": int(m_data.group(1)),
-                    "window_type": int(m_data.group(2)),
-                    "comp_type": m_data.group(3).upper(),
-                    "transform": int(m_data.group(4)),
-                    "frame": {
-                        "left": left,
-                        "top": top,
-                        "right": right,
-                        "bottom": bottom,
-                        "width": max(0, right - left),
-                        "height": max(0, bottom - top),
-                    },
-                    "source_crop": {
-                        "left": float(m_data.group(9)),
-                        "top": float(m_data.group(10)),
-                        "right": float(m_data.group(11)),
-                        "bottom": float(m_data.group(12)),
-                    },
-                    "focused": focused,
-                }
-            )
+            layers.append(_layer_from_match(pending_name, m_data))
             pending_name = None
             continue
 
         # Layer name line (not a separator / header / data row)
-        if "|" not in line and not line.startswith("Display"):
+        if "|" not in line and not line.lstrip().lower().startswith("display"):
             pending_name = line.strip()
 
     # Preserve dumpsys table order: first row = bottom, last row = top.
@@ -114,6 +144,7 @@ def parse_hwclayers(text: str) -> dict[str, Any]:
         "height": height,
         "layers": layers,
         "count": len(layers),
+        "format": fmt if fmt == "a16" else "a14",
     }
 
 
@@ -133,13 +164,22 @@ def sample() -> dict[str, Any]:
         err = (result.stderr or "dumpsys SurfaceFlinger --hwclayers failed").strip()
         return {"ok": False, "error": err}
 
-    parsed = parse_hwclayers(raw)
+    android = status.get("android")
+    fmt = hwclayers_format(android)
+    parsed = parse_hwclayers(raw, fmt=fmt)
     if parsed["count"] == 0:
+        other = "a14" if fmt == "a16" else "a16"
+        alt = parse_hwclayers(raw, fmt=other)
+        if alt["count"] > 0:
+            parsed = alt
+    if parsed["count"] == 0:
+        label = "Android 16" if fmt == "a16" else "Android 14"
         return {
             "ok": False,
-            "error": "no HWC layers parsed",
+            "error": f"no HWC layers parsed ({label} format)",
             "raw": raw[:800],
+            "android": android,
             **parsed,
         }
 
-    return {"ok": True, **parsed}
+    return {"ok": True, "android": android, **parsed}
